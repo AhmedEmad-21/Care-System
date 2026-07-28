@@ -1,0 +1,226 @@
+const bcrypt = require('bcryptjs');
+const User = require('../models/userModel');
+const Doctor = require('../models/doctorModel');
+const Nurse = require('../models/nurseModel');
+const {
+  BadRequestError,
+  ConflictError,
+  NotFoundError,
+  UnauthorizedError,
+  ServiceUnavailableError,
+  TooManyRequestsError,
+} = require('../errors/appErrors');
+const config = require('../config/appConfig');
+const { issueToken, verifyToken: verifyAccessToken, revokeToken } = require('./tokenService');
+const { resolveProfileImage } = require('../utils/profileImage');
+const { sendPasswordResetOtp } = require('./emailService');
+
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const PASSWORD_RESET_SUCCESS_MESSAGE =
+  'If an account exists for this email, a verification code has been sent.';
+
+const generateOtp = (length) => {
+  const min = 10 ** (length - 1);
+  const max = 10 ** length - 1;
+  return Math.floor(min + Math.random() * (max - min + 1)).toString();
+};
+
+const clearPasswordResetState = (user) => {
+  user.resetPasswordTokenHash = null;
+  user.resetPasswordExpiresAt = null;
+  user.resetPasswordAttempts = 0;
+  user.resetPasswordVerifiedAt = null;
+};
+
+const getOtpExpiryMinutes = () => Math.max(1, Math.round(config.otpConfig.expiresInMs / 60000));
+
+const sanitizeUser = (userDoc) => {
+  const user = userDoc.toObject();
+  delete user.passwordHash;
+  return user;
+};
+
+const attachProfile = async (userDoc) => {
+  if (!userDoc) return null;
+  const user = sanitizeUser(userDoc);
+  if (user.role === 'Doctor') {
+    user.profile = await Doctor.findOne({ userId: user._id }).lean();
+    user.photo = resolveProfileImage(user.profileImage);
+    if (user.profile) user.profile.photo = user.photo;
+  }
+  if (user.role === 'Nurse') {
+    user.profile = await Nurse.findOne({ userId: user._id }).lean();
+  }
+  return user;
+};
+
+const generateTokens = (user) => {
+  const basePayload = { id: user._id, role: user.role, email: user.email };
+  return {
+    accessToken: issueToken({ ...basePayload, tokenType: 'access' }, { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }),
+    refreshToken: issueToken({ ...basePayload, tokenType: 'refresh' }, { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '365d' })
+  };
+};
+
+const refreshAccessToken = async (oldRefreshToken) => {
+  try {
+    const payload = verifyAccessToken(oldRefreshToken);
+    if (payload.tokenType !== 'refresh') {
+      throw new UnauthorizedError('Invalid token type');
+    }
+    const user = await User.findById(payload.id);
+    if (!user) throw new NotFoundError('User not found');
+    return generateTokens(user);
+  } catch (error) {
+    throw new UnauthorizedError('Invalid or expired refresh token');
+  }
+};
+
+const requestPasswordReset = async (email) => {
+  const normalizedEmail = normalizeEmail(email);
+  const user = await User.findOne({ email: normalizedEmail });
+
+  if (!user) {
+    return { message: PASSWORD_RESET_SUCCESS_MESSAGE };
+  }
+
+  const now = Date.now();
+  if (user.lastOtpSentAt) {
+    const elapsedMs = now - user.lastOtpSentAt.getTime();
+    const cooldownMs = config.otpConfig.resendCooldownMs;
+    if (elapsedMs < cooldownMs) {
+      const retryAfterSeconds = Math.ceil((cooldownMs - elapsedMs) / 1000);
+      throw new TooManyRequestsError(
+        `Please wait ${retryAfterSeconds} seconds before requesting a new code`,
+        { retryAfterSeconds }
+      );
+    }
+  }
+
+  const otp = generateOtp(config.otpConfig.length);
+  const hash = await bcrypt.hash(otp, config.securityConfig.bcryptSaltRounds);
+  const expiryMinutes = getOtpExpiryMinutes();
+
+  user.resetPasswordTokenHash = hash;
+  user.resetPasswordExpiresAt = new Date(now + config.otpConfig.expiresInMs);
+  user.resetPasswordAttempts = 0;
+  user.resetPasswordVerifiedAt = null;
+  user.lastOtpSentAt = new Date(now);
+  await user.save();
+
+  try {
+    await sendPasswordResetOtp({
+      to: normalizedEmail,
+      otp,
+      expiryMinutes,
+      userName: user.name,
+    });
+  } catch (error) {
+    clearPasswordResetState(user);
+    user.lastOtpSentAt = null;
+    await user.save().catch(() => {});
+
+    console.error('[AuthService] Failed to send password reset OTP email:', error.message);
+    throw new ServiceUnavailableError('Unable to send verification code. Please try again later.');
+  }
+
+  return { message: PASSWORD_RESET_SUCCESS_MESSAGE };
+};
+
+const verifyResetOtp = async ({ email, otp }) => {
+  const user = await User.findOne({ email: normalizeEmail(email) });
+  if (!user || !user.resetPasswordTokenHash) {
+    throw new NotFoundError('No reset request found');
+  }
+
+  if (!user.resetPasswordExpiresAt || user.resetPasswordExpiresAt < new Date()) {
+    clearPasswordResetState(user);
+    await user.save();
+    throw new BadRequestError('Verification code expired. Please request a new one.');
+  }
+
+  if (user.resetPasswordAttempts >= config.otpConfig.maxAttempts) {
+    clearPasswordResetState(user);
+    await user.save();
+    throw new TooManyRequestsError('Maximum verification attempts exceeded. Please request a new code.');
+  }
+
+  const isValid = await bcrypt.compare(String(otp), user.resetPasswordTokenHash);
+  if (!isValid) {
+    user.resetPasswordAttempts += 1;
+    await user.save();
+
+    const attemptsLeft = config.otpConfig.maxAttempts - user.resetPasswordAttempts;
+    if (attemptsLeft <= 0) {
+      clearPasswordResetState(user);
+      await user.save();
+      throw new TooManyRequestsError('Maximum verification attempts exceeded. Please request a new code.');
+    }
+
+    throw new BadRequestError('Invalid verification code', { attemptsLeft });
+  }
+
+  user.resetPasswordVerifiedAt = new Date();
+  user.resetPasswordAttempts = 0;
+  await user.save();
+  return true;
+};
+
+const resetPassword = async (email, newPassword) => {
+  const user = await User.findOne({ email: normalizeEmail(email) });
+  if (!user) throw new NotFoundError('User not found');
+
+  if (!user.resetPasswordVerifiedAt) {
+    throw new BadRequestError('Please verify the code before resetting your password.');
+  }
+
+  const verifiedAgeMs = Date.now() - user.resetPasswordVerifiedAt.getTime();
+  if (verifiedAgeMs > config.otpConfig.verifiedWindowMs) {
+    clearPasswordResetState(user);
+    await user.save();
+    throw new BadRequestError('Verification session expired. Please request a new code.');
+  }
+
+  user.passwordHash = newPassword;
+  clearPasswordResetState(user);
+  user.lastOtpSentAt = null;
+  await user.save();
+  return { message: 'Password updated successfully' };
+};
+
+const updateProfile = async (userId, updateData) => {
+  const allowedUpdates = ['name', 'phoneNumber', 'location', 'profileImage', 'address'];
+  const filteredData = {};
+  Object.keys(updateData).forEach((key) => { if (allowedUpdates.includes(key)) filteredData[key] = updateData[key]; });
+  const user = await User.findByIdAndUpdate(userId, { $set: filteredData }, { new: true, runValidators: true });
+  if (!user) throw new NotFoundError('User not found');
+  return attachProfile(user);
+};
+
+const registerUser = async (payload) => {
+  const { email, password, location, specialization, serviceName, workingHours, offDays, basePrice, profileImage, ...otherData } = payload;
+  const emailNormalized = normalizeEmail(email);
+  if (await User.findOne({ email: emailNormalized })) throw new ConflictError('Email already exists');
+  const user = new User({ ...otherData, role: payload.role || 'Patient', email: emailNormalized, passwordHash: password, profileImage, location });
+  await user.save();
+  if (user.role === 'Doctor') await Doctor.create({ userId: user._id, specialization, basePrice, location, workingHours, offDays });
+  if (user.role === 'Nurse') await Nurse.create({ userId: user._id, serviceName, location, workingHours, offDays });
+  return attachProfile(user);
+};
+
+module.exports = { 
+  registerUser, 
+  loginUser: async ({ email, password }) => {
+    const user = await User.findOne({ email: normalizeEmail(email) });
+    if (!user || !(await user.comparePassword(password))) throw new UnauthorizedError('Invalid credentials');
+    return { user: await attachProfile(user), tokens: generateTokens(user) };
+  }, 
+  getMe: async (id) => attachProfile(await User.findById(id)), 
+  requestPasswordReset, 
+  verifyResetOtp, 
+  resetPassword, 
+  updateProfile, 
+  revokeToken,
+  refreshAccessToken
+};
