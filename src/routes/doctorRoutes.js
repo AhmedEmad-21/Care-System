@@ -4,7 +4,7 @@ const doctorController = require('../controllers/doctorController');
 const authMW = require('../middlewares/authMW');
 const router = express.Router();
 
-
+router.get('/specializations', doctorController.getSpecializations);
 router.get('/available', doctorController.listDoctors);
 router.get('/', filterAvailableDoctorsMW, doctorController.listDoctors);
 router.get('/search', authMW, doctorController.listAvailableDoctors);

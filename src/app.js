@@ -1,6 +1,5 @@
 require('dotenv').config();
 process.env.TZ = process.env.APP_TIMEZONE || "Africa/Cairo";
-
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -61,6 +60,24 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/nursing-services", nursingServiceRoutes);
 
+// مسار ترحيبي للصفحة الرئيسية
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Care System API is running successfully! Welcome to the Care System API.",
+    version: "1.0.0",
+    endpoints: {
+      auth: "/api/auth",
+      doctors: "/api/doctors",
+      nurses: "/api/nurses",
+      bookings: "/api/bookings",
+      ai: "/api/ai",
+      staff: "/api/staff",
+      nursingServices: "/api/nursing-services"
+    },
+    data: {}
+  });
+});
 app.use(errorHandler);
 
 // تشغيل السيرفر والاتصال بالقاعدة معاً
@@ -74,5 +91,6 @@ const startServer = async () => {
 if (require.main === module) {
   startServer();
 }
+
 
 module.exports = app;

@@ -13,6 +13,14 @@ module.exports = {
         coordinates: { type: 'array', minItems: 2, maxItems: 2, items: { type: 'number' } }
       }
     },
-    services: { type: 'array', items: { type: 'string' } }
+    services: { type: 'array', items: { type: 'string' } },
+    offDays: { 
+      type: 'array', 
+      items: { 
+        type: 'integer', 
+        minimum: 0, 
+        maximum: 6 
+      } 
+    }
   }
 };

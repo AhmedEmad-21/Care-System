@@ -21,10 +21,15 @@ const formatDistance = (kilometers) => {
 const analyzeSymptoms = asyncHandler(async (req, res) => {
   const { symptoms, requestLocation, appointmentDate } = req.body;
   const patientId = req.user.id || req.user._id;
+
+  // التحقق من الإحداثيات (سواء مبعوتة في الطلب أو متخزنة في بروفایل المريض)
   const userCoordinates = requestLocation?.coordinates || req.user.location?.coordinates;
 
-  if (!symptoms || !appointmentDate) {
-    return res.status(400).json({ success: false, message: 'Symptoms and appointment date are required' });
+  if (!symptoms || !appointmentDate || !userCoordinates || !Array.isArray(userCoordinates) || userCoordinates.length < 2) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Symptoms, appointment date, and valid requestLocation coordinates are required' 
+    });
   }
 
   const dayOfWeek = new Date(appointmentDate).getDay();

@@ -46,5 +46,14 @@ const listAvailableDoctors = asyncHandler(async (req, res) => {
     data: doctors 
   });
 });
-
-module.exports = { listDoctors, getDoctorById, listAvailableDoctors };
+const getSpecializations = asyncHandler(async (req, res) => {
+  // استرجاع كل التخصصات الفريدة الموجودة في مجموعة الدكاترة
+  const specializations = await Doctor.distinct('specialization');
+  
+  return res.json({
+    success: true,
+    count: specializations.length,
+    data: specializations
+  });
+});
+module.exports = { listDoctors, getDoctorById, listAvailableDoctors, getSpecializations };

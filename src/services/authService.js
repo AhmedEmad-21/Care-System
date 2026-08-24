@@ -33,6 +33,30 @@ const clearPasswordResetState = (user) => {
   user.resetPasswordVerifiedAt = null;
 };
 
+// دالة للتحقق من قوة الباسورد وتحديد النقص بدقة
+const validatePasswordStrength = (password) => {
+  const errors = [];
+  
+  if (!password || password.length < 8) {
+    errors.push('يجب ألا تقل كلمة المرور عن 8 أحرف');
+  }
+  if (!/[A-Z]/.test(password)) {
+    errors.push('يجب أن تحتوي على حرف كابيتال واحد (A-Z) على الأقل');
+  }
+  if (!/[a-z]/.test(password)) {
+    errors.push('يجب أن تحتوي على حرف سمول واحد (a-z) على الأقل');
+  }
+  if (!/\d/.test(password)) {
+    errors.push('يجب أن تحتوي على رقم واحد (0-9) على الأقل');
+  }
+  if (!/[@$!%*?&]/.test(password)) {
+    errors.push('يجب أن تحتوي على رمز خاص واحد على الأقل (مثل @, $, !, %, *, ?, &)');
+  }
+
+  if (errors.length > 0) {
+    throw new BadRequestError(`كلمة المرور ضعيفة: ${errors.join('، وخاصة ') === errors.join('، ') ? errors.join(' - ') : errors.join(' - ')}`);
+  }
+};
 const getOtpExpiryMinutes = () => Math.max(1, Math.round(config.otpConfig.expiresInMs / 60000));
 
 const sanitizeUser = (userDoc) => {
@@ -181,7 +205,7 @@ const resetPassword = async (email, newPassword) => {
     await user.save();
     throw new BadRequestError('Verification session expired. Please request a new code.');
   }
-
+  validatePasswordStrength(newPassword);
   user.passwordHash = newPassword;
   clearPasswordResetState(user);
   user.lastOtpSentAt = null;
@@ -200,6 +224,7 @@ const updateProfile = async (userId, updateData) => {
 
 const registerUser = async (payload) => {
   const { email, password, location, specialization, serviceName, workingHours, offDays, basePrice, profileImage, ...otherData } = payload;
+  validatePasswordStrength(password);
   const emailNormalized = normalizeEmail(email);
   if (await User.findOne({ email: emailNormalized })) throw new ConflictError('Email already exists');
   const user = new User({ ...otherData, role: payload.role || 'Patient', email: emailNormalized, passwordHash: password, profileImage, location });
@@ -211,6 +236,7 @@ const registerUser = async (payload) => {
 
 module.exports = { 
   registerUser, 
+
   loginUser: async ({ email, password }) => {
     const user = await User.findOne({ email: normalizeEmail(email) });
     if (!user || !(await user.comparePassword(password))) throw new UnauthorizedError('Invalid credentials');
@@ -221,6 +247,7 @@ module.exports = {
   verifyResetOtp, 
   resetPassword, 
   updateProfile, 
+  validatePasswordStrength,
   revokeToken,
   refreshAccessToken
 };

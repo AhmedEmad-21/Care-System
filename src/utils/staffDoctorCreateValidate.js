@@ -7,7 +7,25 @@ module.exports = {
     phoneNumber: { type: 'string', pattern: "^01[0125][0-9]{8}$" },
     secondaryPhoneNumber: { type: 'string', pattern: "^01[0125][0-9]{8}$" },
     address: { type: 'string', minLength: 1 },
-    specialization: { type: 'string', minLength: 1 },
+    specialization: { 
+  type: 'string', 
+  enum: [
+    'باطنة', 
+    'صدرية', 
+    'نفسية', 
+    'قلب وأوعية دموية', 
+    'عظام', 
+    'جلدية', 
+    'رمد', 
+    'أسنان', 
+    'مخ وأعصاب', 
+    'جهاز هضمي وكبد', 
+    'أنف وأذن وحنجرة', 
+    'جراحة عامة', 
+    'نسا وتوليد', 
+    'أطفال'
+  ] 
+},
     basePrice: { type: 'number', minimum: 0 },
     profileImage: { type: 'string', minLength: 1 },
     location: {

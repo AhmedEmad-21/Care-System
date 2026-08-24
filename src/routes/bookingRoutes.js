@@ -1,7 +1,7 @@
 const express = require('express');
 const authMW = require('../middlewares/authMW');
 const validateAjvMW = require('../middlewares/validateAjvMW');
-const bookingCreateSchema = require('../utils/bookingCreateValidate');
+const bookingCreateSchema = require('../utils/BookingCreateValidate');
 const bookingController = require('../controllers/bookingController');
 
 const router = express.Router();

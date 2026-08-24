@@ -7,7 +7,7 @@ module.exports = {
     role: { enum: ["Patient", "Doctor", "Nurse", "Staff", "Admin"] },
     name: { type: "string", minLength: 1 },
     email: { type: "string", format: "email" },
-    password: { type: "string", minLength: 8 },
+    password: { type: "string", minLength: 8 , pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$" },
     phoneNumber: { type: "string", pattern: "^01[0125][0-9]{8}$" },
     address: { type: "string" },
     profileImage: { type: "string", minLength: 1 },
