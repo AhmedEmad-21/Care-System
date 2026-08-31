@@ -7,6 +7,7 @@ const geoPointSchema = new mongoose.Schema({
 
 const doctorSchema = new mongoose.Schema({
   name: { type: String, required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   phoneNumber: { type: String, required: true, unique: true, index: true },
   secondaryPhoneNumber: { type: String, required: false },
   address: { type: String, required: true },

@@ -54,6 +54,8 @@ const userSchema = new mongoose.Schema(
         phoneNumber: {
             type: String,
             required: true,
+            unique: true,
+            index: true,
             trim: true,
         },
         address: {

@@ -6,8 +6,11 @@ const router = express.Router();
 
 router.get('/specializations', doctorController.getSpecializations);
 router.get('/available', doctorController.listDoctors);
-router.get('/', filterAvailableDoctorsMW, doctorController.listDoctors);
+
+router.get('/search-by-name', doctorController.searchDoctorsByName);
+
 router.get('/search', authMW, doctorController.listAvailableDoctors);
+router.get('/', filterAvailableDoctorsMW, doctorController.listDoctors);
 router.get('/:id', doctorController.getDoctorById);
 
 module.exports = router;

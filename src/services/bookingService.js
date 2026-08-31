@@ -2,25 +2,11 @@ const Booking = require('../models/bookingModel');
 const NursingBooking = require('../models/nursingBookingModel');
 const Doctor = require('../models/doctorModel');
 const Nurse = require('../models/nurseModel');
+const User = require('../models/userModel');
 const { BadRequestError, NotFoundError } = require('../errors/appErrors');
 const { BOOKING_STATUSES } = require('../config/constants');
 const { logAuditEvent } = require('./auditLogService');
-
-// تعديل الدالة لتقبل القيمة null دون إحداث خطأ
-const normalizeGeoPoint = (location) => {
-  if (!location) return null; // إذا لم يوجد موقع، نرجع null ببساطة
-  
-  if (location.type !== 'Point' || !Array.isArray(location.coordinates) || location.coordinates.length !== 2) {
-    throw new BadRequestError('requestLocation must be a GeoJSON Point with [longitude, latitude]');
-  }
-
-  const coordinates = location.coordinates.map(Number);
-  if (coordinates.some((entry) => !Number.isFinite(entry))) {
-    throw new BadRequestError('requestLocation contains invalid coordinates');
-  }
-
-  return { type: 'Point', coordinates };
-};
+const { normalizeGeoPoint } = require('../utils/geoPoint');
 
 const resolveBookingPrice = async ({ doctorId, nurseId }) => {
   if (doctorId) {
@@ -45,13 +31,22 @@ const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, req
 
   const totalCost = await resolveBookingPrice({ doctorId, nurseId });
 
+  // جلب اللوكيشن المسجل لليوزر تلقائياً لو الفرونت مابعتهوش
+  let finalLocation = requestLocation;
+  if (!finalLocation || !finalLocation.coordinates) {
+    const user = await User.findById(patientId).lean();
+    if (user && user.location) {
+      finalLocation = user.location;
+    }
+  }
+
   return Booking.create({
     patientId,
     doctorId: doctorId || null,
     nurseId: nurseId || null,
     symptoms,
     suggestedSpecialty: suggestedSpecialty || null,
-    requestLocation: normalizeGeoPoint(requestLocation), // الآن تعمل حتى لو كانت null
+    requestLocation: normalizeGeoPoint(finalLocation, 'requestLocation'),
     appointmentTime: appointmentTime || null,
     totalCost,
     status: BOOKING_STATUSES.PENDING,
@@ -59,20 +54,27 @@ const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, req
 };
 
 const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLocation, appointmentTime }) => {
-  // التحقق من الموقع (كما اتفقنا)
-  if (!requestLocation || !requestLocation.coordinates) {
-    throw new BadRequestError('مطلوب تحديد الموقع لإرسال الممرض');
-  }
-
   const nurse = await Nurse.findById(nurseId).lean();
   if (!nurse) throw new NotFoundError('Nurse not found');
 
-  // حفظ الطلب مع الـ serviceId
+  // جلب اللوكيشن المسجل لليوزر تلقائياً لو الفرونت مابعتهوش
+  let finalLocation = requestLocation;
+  if (!finalLocation || !finalLocation.coordinates) {
+    const user = await User.findById(patientId).lean();
+    if (user && user.location) {
+      finalLocation = user.location;
+    }
+  }
+
+  if (!finalLocation || !finalLocation.coordinates) {
+    throw new BadRequestError('مطلوب تحديد الموقع لإرسال الممرض ولا يوجد موقع مسجل للحساب');
+  }
+
   return NursingBooking.create({
     patientId,
     nurseId,
-    serviceId, // <--- هنا ستحفظ الخدمة التي اختارها المريض
-    requestLocation: normalizeGeoPoint(requestLocation),
+    serviceId,
+    requestLocation: normalizeGeoPoint(finalLocation, 'requestLocation'),
     appointmentTime: appointmentTime || null,
     totalCost: nurse.servicePrice || 0,
     status: BOOKING_STATUSES.PENDING,

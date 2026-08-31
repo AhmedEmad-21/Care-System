@@ -30,7 +30,7 @@ const listNursesByService = asyncHandler(async (req, res) => {
         near: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] }, 
         distanceField: 'dist', 
         spherical: true, 
-        maxDistance: 20000, 
+        maxDistance: 40000, 
         query 
       } 
     },

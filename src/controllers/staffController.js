@@ -103,8 +103,20 @@ const createDoctor = asyncHandler(async (req, res) => {
 
 // 11. تحديث طبيب
 const updateDoctor = asyncHandler(async (req, res) => {
-  const doctor = await Doctor.findByIdAndUpdate(req.params.id, req.body, { new: true });
-  return res.json({ success: true, data: doctor });
+  try {
+    const doctor = await Doctor.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    return res.json({ success: true, data: doctor });
+  } catch (error) {
+    if (error.code === 11000) {
+      const isPhoneDuplicate = Boolean(error.keyValue?.phoneNumber);
+      const message = isPhoneDuplicate
+        ? 'هذا الطبيب مسجل بالفعل بنفس رقم الهاتف'
+        : 'يوجد طبيب آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
+
+      return res.status(409).json({ success: false, message });
+    }
+    throw error;
+  }
 });
 
 // 12. جلب خدمات التمريض

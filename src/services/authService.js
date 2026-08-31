@@ -14,6 +14,7 @@ const config = require('../config/appConfig');
 const { issueToken, verifyToken: verifyAccessToken, revokeToken } = require('./tokenService');
 const { resolveProfileImage } = require('../utils/profileImage');
 const { sendPasswordResetOtp } = require('./emailService');
+const { normalizeGeoPoint } = require('../utils/geoPoint');
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
@@ -216,32 +217,142 @@ const resetPassword = async (email, newPassword) => {
 const updateProfile = async (userId, updateData) => {
   const allowedUpdates = ['name', 'phoneNumber', 'location', 'profileImage', 'address'];
   const filteredData = {};
-  Object.keys(updateData).forEach((key) => { if (allowedUpdates.includes(key)) filteredData[key] = updateData[key]; });
-  const user = await User.findByIdAndUpdate(userId, { $set: filteredData }, { new: true, runValidators: true });
+
+  Object.keys(updateData).forEach((key) => { 
+    if (allowedUpdates.includes(key)) { 
+      filteredData[key] = updateData[key]; 
+    } 
+  });
+
+  if (filteredData.location) {
+    filteredData.location = normalizeGeoPoint(filteredData.location, 'location');
+  }
+
+  // التأكد من عدم تكرار رقم التليفون إذا تم تعديله لحساب آخر
+  if (filteredData.phoneNumber) {
+    const existingUser = await User.findOne({ phoneNumber: filteredData.phoneNumber, _id: { $ne: userId } });
+    if (existingUser) {
+      throw new ConflictError('رقم الهاتف مستخدم بالفعل بواسطة حساب آخر');
+    }
+  }
+
+  const user = await User.findById(userId);
   if (!user) throw new NotFoundError('User not found');
+
+  Object.assign(user, filteredData);
+
+  try {
+    await user.save();
+  } catch (error) {
+    if (error?.code === 11000 && error?.keyValue?.phoneNumber) {
+      throw new ConflictError('رقم الهاتف مستخدم بالفعل بواسطة حساب آخر');
+    }
+    throw error;
+  }
+
   return attachProfile(user);
 };
 
 const registerUser = async (payload) => {
-  const { email, password, location, specialization, serviceName, workingHours, offDays, basePrice, profileImage, ...otherData } = payload;
+  const { email, phoneNumber, password, location, specialization, serviceName, workingHours, offDays, basePrice, profileImage, ...otherData } = payload;
   validatePasswordStrength(password);
   const emailNormalized = normalizeEmail(email);
-  if (await User.findOne({ email: emailNormalized })) throw new ConflictError('Email already exists');
-  const user = new User({ ...otherData, role: payload.role || 'Patient', email: emailNormalized, passwordHash: password, profileImage, location });
-  await user.save();
-  if (user.role === 'Doctor') await Doctor.create({ userId: user._id, specialization, basePrice, location, workingHours, offDays });
-  if (user.role === 'Nurse') await Nurse.create({ userId: user._id, serviceName, location, workingHours, offDays });
+  const normalizedLocation = normalizeGeoPoint(location, 'location');
+  
+  if (await User.findOne({ email: emailNormalized })) {
+    throw new ConflictError('البريد الإلكتروني مستخدم بالفعل');
+  }
+
+  if (await User.findOne({ phoneNumber })) {
+    throw new ConflictError('رقم الهاتف مستخدم بالفعل لحساب آخر');
+  }
+
+  const user = new User({ 
+    ...otherData, 
+    role: payload.role || 'Patient', 
+    email: emailNormalized, 
+    phoneNumber,
+    passwordHash: password, 
+    profileImage, 
+    location: normalizedLocation 
+  });
+
+  try {
+    await user.save();
+
+    if (user.role === 'Doctor') {
+      await Doctor.create({
+        userId: user._id,
+        addedBy: user._id,
+        name: user.name,
+        phoneNumber: user.phoneNumber,
+        address: user.address,
+        profileImage: user.profileImage,
+        specialization,
+        basePrice,
+        location: normalizedLocation,
+        workingHours,
+        offDays,
+      });
+    }
+
+    if (user.role === 'Nurse') {
+      await Nurse.create({
+        userId: user._id,
+        name: user.name,
+        phoneNumber: user.phoneNumber,
+        location: normalizedLocation,
+        workingHours,
+        offDays,
+      });
+    }
+  } catch (error) {
+    if (error?.code === 11000) {
+      if (error?.keyValue?.email) {
+        throw new ConflictError('البريد الإلكتروني مستخدم بالفعل');
+      }
+      if (error?.keyValue?.phoneNumber) {
+        throw new ConflictError('رقم الهاتف مستخدم بالفعل لحساب آخر');
+      }
+      if (error?.keyValue?.['location.coordinates']) {
+        throw new ConflictError('يوجد حساب آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط');
+      }
+    }
+
+    await User.deleteOne({ _id: user._id }).catch(() => {});
+    throw error;
+  }
+
   return attachProfile(user);
 };
 
 module.exports = { 
   registerUser, 
 
-  loginUser: async ({ email, password }) => {
-    const user = await User.findOne({ email: normalizeEmail(email) });
-    if (!user || !(await user.comparePassword(password))) throw new UnauthorizedError('Invalid credentials');
+  loginUser: async ({ email, phoneNumber, loginIdentifier, password }) => {
+    let query = {};
+    if (email) {
+      query.email = normalizeEmail(email);
+    } else if (phoneNumber) {
+      query.phoneNumber = phoneNumber;
+    } else if (loginIdentifier) {
+      const identifier = String(loginIdentifier).trim();
+      if (identifier.includes('@')) {
+        query.email = normalizeEmail(identifier);
+      } else {
+        query.phoneNumber = identifier;
+      }
+    } else {
+      throw new BadRequestError('يرجى إدخال البريد الإلكتروني أو رقم الهاتف تسجيل الدخول');
+    }
+
+    const user = await User.findOne(query);
+    if (!user || !(await user.comparePassword(password))) {
+      throw new UnauthorizedError('بيانات الدخول غير صحيحة');
+    }
     return { user: await attachProfile(user), tokens: generateTokens(user) };
   }, 
+
   getMe: async (id) => attachProfile(await User.findById(id)), 
   requestPasswordReset, 
   verifyResetOtp, 

@@ -297,7 +297,7 @@ JWT payload contains: `{ id, role, email, tokenType }`
 | `address`        | string   | ✅       | —                                                                           |
 | `role`           | string   | ❌       | `Patient` \| `Doctor` \| `Nurse` \| `Staff` \| `Admin` (default: `Patient`) |
 | `profileImage`   | string   | ❌       | URL or path                                                                 |
-| `location`       | GeoPoint | ❌\*     | Required if `role = Doctor` or `Nurse`                                      |
+| `location`       | GeoPoint | ✅       | GeoJSON Point; use current location or a custom location chosen by the user |
 | `specialization` | string   | ❌\*     | Required if `role = Doctor`                                                 |
 | `basePrice`      | number   | ❌\*     | Required if `role = Doctor`, min 0                                          |
 | `serviceName`    | string   | ❌       | For Nurse registration                                                      |
@@ -348,11 +348,12 @@ JWT payload contains: `{ id, role, email, tokenType }`
 
 #### Error Responses
 
-| Status | Message              |
-| ------ | -------------------- |
-| `409`  | Email already exists |
-| `400`  | Validation failed    |
-| `429`  | Too many requests    |
+| Status | Message                     |
+| ------ | --------------------------- |
+| `409`  | Email already exists        |
+| `409`  | Phone number already exists |
+| `400`  | Validation failed           |
+| `429`  | Too many requests           |
 
 ---
 
@@ -367,16 +368,20 @@ JWT payload contains: `{ id, role, email, tokenType }`
 
 #### Request Body
 
-| Field      | Type   | Required | Validation  |
-| ---------- | ------ | -------- | ----------- |
-| `email`    | string | ✅       | valid email |
-| `password` | string | ✅       | min 8 chars |
+| Field             | Type   | Required | Validation                            |
+| ----------------- | ------ | -------- | ------------------------------------- |
+| `email`           | string | ❌       | valid email                           |
+| `phoneNumber`     | string | ❌       | Egyptian mobile: `^01[0125][0-9]{8}$` |
+| `loginIdentifier` | string | ❌       | Alias for email or phone login        |
+| `password`        | string | ✅       | min 8 chars                           |
+
+> Send either `email`, `phoneNumber`, or `loginIdentifier` together with `password`.
 
 #### Example Request
 
 ```json
 {
-  "email": "ahmed@example.com",
+  "phoneNumber": "01012345678",
   "password": "SecurePass123"
 }
 ```
@@ -601,6 +606,8 @@ JWT payload contains: `{ id, role, email, tokenType }`
 | `location`     | GeoPoint | User location     |
 | `profileImage` | string   | Profile image URL |
 
+> `location` must remain a GeoJSON Point with `[longitude, latitude]`. If omitted, the saved location stays unchanged.
+
 #### Example Request
 
 ```json
@@ -765,6 +772,49 @@ Authorization: Bearer <token>
       "isAvailable": true,
       "location": { "type": "Point", "coordinates": [31.33, 30.05] },
       "dist": { "calculated": 4523.8 }
+    }
+  ]
+}
+```
+
+---
+
+### 5.4 Search Doctors by Name
+
+|            |                               |
+| ---------- | ----------------------------- |
+| **Method** | `GET`                         |
+| **Path**   | `/api/doctors/search-by-name` |
+| **Auth**   | None                          |
+
+#### Query Parameters
+
+| Param            | Type              | Required | Description                         |
+| ---------------- | ----------------- | -------- | ----------------------------------- |
+| `name`           | string            | ✅       | Partial or full doctor name         |
+| `specialization` | string            | ❌       | Filter by doctor specialization     |
+| `lat`            | number            | ❌       | Latitude for geo sorting            |
+| `long`           | number            | ❌       | Longitude for geo sorting           |
+| `date`           | string (ISO date) | ❌       | Filter out doctors on their off day |
+
+#### Notes
+
+- Search is case-insensitive and matches against the stored doctor name.
+- If `lat` and `long` are provided, results are geo-sorted from nearest to farthest.
+
+#### Success Response — `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "done",
+  "count": 2,
+  "data": [
+    {
+      "_id": "64a1b2c3d4e5f6789012345b",
+      "name": "Dr. Sara Ali",
+      "specialization": "قلب وأوعية دموية",
+      "isAvailable": true
     }
   ]
 }
@@ -1514,14 +1564,19 @@ Returns alternative provider suggestions or matching metadata used by AI handler
 
 #### Request Body (at least one field required by schema)
 
-| Field            | Type     | Validation                 |
-| ---------------- | -------- | -------------------------- |
-| `basePrice`      | number   | min 0 (required in schema) |
-| `specialization` | string   | min 1 char                 |
-| `profileImage`   | string   | —                          |
-| `workingHours`   | object   | `{ start, end }`           |
-| `offDays`        | number[] | 0–6                        |
-| `isAvailable`    | boolean  | —                          |
+| Field                  | Type     | Validation                 |
+| ---------------------- | -------- | -------------------------- |
+| `name`                 | string   | min 1 char                 |
+| `phoneNumber`          | string   | Egyptian mobile pattern    |
+| `secondaryPhoneNumber` | string   | Egyptian mobile pattern    |
+| `address`              | string   | min 1 char                 |
+| `basePrice`            | number   | min 0 (required in schema) |
+| `specialization`       | string   | min 1 char                 |
+| `profileImage`         | string   | —                          |
+| `location`             | GeoPoint | GeoJSON Point              |
+| `workingHours`         | object   | `{ start, end }`           |
+| `offDays`              | number[] | 0–6                        |
+| `isAvailable`          | boolean  | —                          |
 
 #### Success Response — `200 OK`
 

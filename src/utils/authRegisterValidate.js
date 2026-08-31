@@ -1,15 +1,14 @@
 module.exports = {
   type: "object",
   additionalProperties: false,
-  // تمت إزالة "role" من المصفوفة المطلوبة
-  required: ["name", "email", "password", "phoneNumber", "address"],
+  required: ["name", "email", "password", "phoneNumber", "address", "location"], // تأكيد أن اللوكيشن إجباري بالتنسيق الصح
   properties: {
     role: { enum: ["Patient", "Doctor", "Nurse", "Staff", "Admin"] },
     name: { type: "string", minLength: 1 },
     email: { type: "string", format: "email" },
     password: { type: "string", minLength: 8 , pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$" },
     phoneNumber: { type: "string", pattern: "^01[0125][0-9]{8}$" },
-    address: { type: "string" },
+    address: { type: "string", minLength: 1 },
     profileImage: { type: "string", minLength: 1 },
     location: {
       type: "object",

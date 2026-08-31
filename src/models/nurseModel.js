@@ -11,6 +11,7 @@ const geoPointSchema = new mongoose.Schema(
 const nurseSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     phoneNumber: { type: String, required: true, unique: true, index: true },
     location: { type: geoPointSchema, required: true },
     isAvailable: { type: Boolean, default: true },
