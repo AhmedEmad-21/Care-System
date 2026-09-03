@@ -26,6 +26,14 @@ const resetPasswordFinal = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Password has been reset successfully' });
 });
 
+const changePassword = asyncHandler(async (req, res) => {
+  const userId = req.user.id || req.user._id;
+  const { currentPassword, newPassword } = req.body;
+
+  await authService.changePassword(userId, currentPassword, newPassword);
+  res.json({ success: true, message: 'Password changed successfully' });
+});
+
 const me = asyncHandler(async (req, res) => {
   res.json({ success: true, data: await authService.getMe(req.user.id || req.user._id) });
 });
@@ -55,6 +63,7 @@ module.exports = {
   resetPassword, 
   verifyOtp, 
   resetPasswordFinal, 
+  changePassword,
   me, 
   updateProfile, 
   refreshToken, 

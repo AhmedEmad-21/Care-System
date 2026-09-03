@@ -19,10 +19,10 @@ const nurseSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-// فهرس الجغرافيا للبحث
+
+// فهرس الجغرافيا للبحث (مطلوب للـ $geoNear)
 nurseSchema.index({ location: '2dsphere' });
 
-// فهرس فريد لمنع وجود ممرضين في نفس الموقع الجغرافي
-nurseSchema.index({ "location.coordinates": 1 }, { unique: true });
+// تم حذف السطر الخاص بالـ unique index على الـ coordinates للسماح بتكرار الموقع
 
 module.exports = mongoose.model('Nurse', nurseSchema);

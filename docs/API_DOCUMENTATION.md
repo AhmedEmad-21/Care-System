@@ -1,9 +1,11 @@
 # Care System — API Documentation
 
 > **Audience:** Frontend Team  
-> **Version:** 1.0.0  
+> **Version:** 1.0.1  
 > **Base URL:** `http://localhost:3000` (default — configurable via `PORT`)  
 > **Timezone:** `Africa/Cairo` (timestamps in responses are normalized to this timezone)
+
+> **Recent Updates:** Added authenticated password change flow and the two-step AI doctor matching flow with location fallback logic.
 
 ---
 
@@ -651,6 +653,65 @@ JWT payload contains: `{ id, role, email, tokenType }`
   "message": "Logged out"
 }
 ```
+
+---
+
+### 4.10 Change Password
+
+|            |                             |
+| ---------- | --------------------------- |
+| **Method** | `PATCH`                     |
+| **Path**   | `/api/auth/change-password` |
+| **Auth**   | ✅ Bearer Token             |
+
+#### Request Body
+
+| Field             | Type   | Required | Description                               |
+| ----------------- | ------ | -------- | ----------------------------------------- |
+| `currentPassword` | string | ✅       | Current password stored in DB             |
+| `newPassword`     | string | ✅       | New password; must satisfy strength rules |
+
+#### Example Request
+
+```json
+{
+  "currentPassword": "OldPass123@",
+  "newPassword": "NewPass456@"
+}
+```
+
+#### Success Response — `200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Password changed successfully"
+}
+```
+
+#### Password Strength Rules
+
+The new password must satisfy all of the following:
+
+- Minimum 8 characters
+- At least 1 lowercase letter
+- At least 1 uppercase letter
+- At least 1 number
+- At least 1 special character (`@`, `$`, `!`, `%`, `*`, `?`, `&`)
+
+If any rule is missing, the API returns a clear message such as:
+
+- `كلمة المرور ضعيفة: يجب أن تحتوي على حرف كبير واحد على الأقل (A-Z)`
+- `كلمة المرور ضعيفة: يجب أن تحتوي على رقم واحد على الأقل (0-9)`
+- `كلمة المرور ضعيفة: يجب أن تحتوي على رمز خاص واحد على الأقل (مثل @, $, !, %, *, ?, &)`
+
+#### Error Responses
+
+| Status | Message                           |
+| ------ | --------------------------------- |
+| `401`  | Current password is incorrect     |
+| `400`  | New password must be different    |
+| `400`  | Validation failed / weak password |
 
 ---
 

@@ -113,6 +113,10 @@ const userSchema = new mongoose.Schema(
             default: 0,
             min: 0,
         },
+        lastAiAnalysisDate: {
+            type: Date,
+            default: null,
+        },
     },
     {
         timestamps: true,

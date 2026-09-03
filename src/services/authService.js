@@ -34,28 +34,34 @@ const clearPasswordResetState = (user) => {
   user.resetPasswordVerifiedAt = null;
 };
 
-// دالة للتحقق من قوة الباسورد وتحديد النقص بدقة
-const validatePasswordStrength = (password) => {
+const getPasswordValidationErrors = (password) => {
   const errors = [];
-  
+
   if (!password || password.length < 8) {
     errors.push('يجب ألا تقل كلمة المرور عن 8 أحرف');
   }
-  if (!/[A-Z]/.test(password)) {
-    errors.push('يجب أن تحتوي على حرف كابيتال واحد (A-Z) على الأقل');
+  if (!/[A-Z]/.test(password || '')) {
+    errors.push('يجب أن تحتوي على حرف كبير واحد على الأقل (A-Z)');
   }
-  if (!/[a-z]/.test(password)) {
-    errors.push('يجب أن تحتوي على حرف سمول واحد (a-z) على الأقل');
+  if (!/[a-z]/.test(password || '')) {
+    errors.push('يجب أن تحتوي على حرف صغير واحد على الأقل (a-z)');
   }
-  if (!/\d/.test(password)) {
-    errors.push('يجب أن تحتوي على رقم واحد (0-9) على الأقل');
+  if (!/\d/.test(password || '')) {
+    errors.push('يجب أن تحتوي على رقم واحد على الأقل (0-9)');
   }
-  if (!/[@$!%*?&]/.test(password)) {
+  if (!/[@$!%*?&]/.test(password || '')) {
     errors.push('يجب أن تحتوي على رمز خاص واحد على الأقل (مثل @, $, !, %, *, ?, &)');
   }
 
+  return errors;
+};
+
+// دالة للتحقق من قوة الباسورد وتحديد النقص بدقة
+const validatePasswordStrength = (password) => {
+  const errors = getPasswordValidationErrors(password);
+
   if (errors.length > 0) {
-    throw new BadRequestError(`كلمة المرور ضعيفة: ${errors.join('، وخاصة ') === errors.join('، ') ? errors.join(' - ') : errors.join(' - ')}`);
+    throw new BadRequestError(`كلمة المرور ضعيفة: ${errors.join(' - ')}`);
   }
 };
 const getOtpExpiryMinutes = () => Math.max(1, Math.round(config.otpConfig.expiresInMs / 60000));
@@ -214,6 +220,30 @@ const resetPassword = async (email, newPassword) => {
   return { message: 'Password updated successfully' };
 };
 
+const changePassword = async (userId, currentPassword, newPassword) => {
+  const user = await User.findById(userId);
+  if (!user) throw new NotFoundError('User not found');
+
+  if (!currentPassword || !newPassword) {
+    throw new BadRequestError('Current password and new password are required');
+  }
+
+  const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+  if (!isCurrentPasswordValid) {
+    throw new UnauthorizedError('Current password is incorrect');
+  }
+
+  validatePasswordStrength(newPassword);
+
+  if (await user.comparePassword(newPassword)) {
+    throw new BadRequestError('New password must be different from the current password');
+  }
+
+  user.passwordHash = newPassword;
+  await user.save();
+  return { message: 'Password changed successfully' };
+};
+
 const updateProfile = async (userId, updateData) => {
   const allowedUpdates = ['name', 'phoneNumber', 'location', 'profileImage', 'address'];
   const filteredData = {};
@@ -357,6 +387,7 @@ module.exports = {
   requestPasswordReset, 
   verifyResetOtp, 
   resetPassword, 
+  changePassword,
   updateProfile, 
   validatePasswordStrength,
   revokeToken,
