@@ -65,7 +65,7 @@ const getSuggestedSpecialty = async (patientId, symptoms) => {
           3. لا تضف أي نص إضافي، فقط اسم التخصص.`,
         },
       ],
-      max_tokens: 20,
+      max_tokens: 600,
     });
 
     const specialty = completion.choices[0]?.message?.content?.trim();
@@ -85,8 +85,11 @@ const getSuggestedSpecialty = async (patientId, symptoms) => {
       throw error;
     }
 
-    console.error('❌ AI provider failed. No fallback is allowed:', error.message);
-    throw new ServiceUnavailableError('AI analysis is temporarily unavailable. Please try again later.');
+    // طباعة الخطأ كاملاً في التيرمنال لمعرفة السبب الدقيق
+    console.error('❌ Groq API Full Error Details:', error.response ? error.response.data : error);
+    
+    // إرجاع تفاصيل الخطأ الحقيقي مباشرة لتبان عندك في الـ Response أو التيرمنال
+    throw new ServiceUnavailableError(`AI Error: ${error.message}`);
   }
 };
 
