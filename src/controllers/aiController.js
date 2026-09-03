@@ -1,43 +1,15 @@
 const asyncHandler = require('../utils/asyncHandler');
 const aiService = require('../services/aiService');
-const User = require('../models/userModel');
 const { createAiSession, findMatchingDoctors, getAlternativeDoctors, resolveCanonicalSpecialty } = require('../services/matchingService');
 const Doctor = require('../models/doctorModel');
-
-const specialtyMap = {
-  "Cardiology": "قلب",
-  "Dermatology": "جلدية",
-  "Ophthalmology": "عيون",
-  "Orthopedics": "عظام",
-  "Internal Medicine": "باطنة",
-  "Dentistry": "أسنان",
-  "Gastroenterology": "باطنة"
-};
 
 const formatDistance = (kilometers) => {
   if (!Number.isFinite(kilometers)) return null;
   return kilometers < 1 ? `${Math.round(kilometers * 1000)}m` : `${kilometers.toFixed(1)}km`;
 };
 
-const resolveSearchCoordinates = async (req, patientId) => {
-  const requestLocation = req.body?.requestLocation || req.body?.location;
-  const incomingCoordinates = requestLocation?.coordinates || req.body?.coordinates;
-
-  if (Array.isArray(incomingCoordinates) && incomingCoordinates.length >= 2) {
-    return { type: 'Point', coordinates: [Number(incomingCoordinates[0]), Number(incomingCoordinates[1])] };
-  }
-
-  const user = await User.findById(patientId).select('location');
-  const userCoordinates = user?.location?.coordinates;
-  if (Array.isArray(userCoordinates) && userCoordinates.length >= 2) {
-    return { type: 'Point', coordinates: [Number(userCoordinates[0]), Number(userCoordinates[1])] };
-  }
-
-  return null;
-};
-
 const analyzeSymptoms = asyncHandler(async (req, res) => {
-  const { symptoms, appointmentDate, requestLocation } = req.body;
+  const { symptoms } = req.body;
   const patientId = req.user.id || req.user._id;
 
   if (!symptoms || !String(symptoms).trim()) {
@@ -47,29 +19,24 @@ const analyzeSymptoms = asyncHandler(async (req, res) => {
     });
   }
 
-  const aiSpecialty = await aiService.getSuggestedSpecialty(patientId, symptoms);
-  const arabicSpecialty = specialtyMap[aiSpecialty] || aiSpecialty;
-  const location = requestLocation?.coordinates || (req.user?.location?.coordinates ?? null);
+  const suggestedSpecialty = await aiService.getSuggestedSpecialty(patientId, symptoms);
 
   const sessionResult = await createAiSession({
     patientId,
     symptoms,
-    suggestedSpecialty: arabicSpecialty,
-    requestLocation: location ? { type: 'Point', coordinates: location } : null,
-    appointmentDate,
+    suggestedSpecialty,
+    requestLocation: null,
+    appointmentDate: null,
   });
 
   return res.status(200).json({
     success: true,
     sessionId: sessionResult.session._id,
-    suggestedSpecialty: sessionResult.specialty || arabicSpecialty,
-    confidence: sessionResult.confidence || 0.95,
-    message: 'Specialty analyzed successfully',
+    suggestedSpecialty: sessionResult.specialty || suggestedSpecialty,
   });
 });
 
 const searchDoctors = asyncHandler(async (req, res) => {
-  const patientId = req.user.id || req.user._id;
   const { specialty, appointmentDate, requestLocation, maxDistanceMeters } = req.body;
 
   if (!specialty || !String(specialty).trim()) {
@@ -79,11 +46,10 @@ const searchDoctors = asyncHandler(async (req, res) => {
     });
   }
 
-  const coords = requestLocation?.coordinates || await resolveSearchCoordinates(req, patientId);
-  if (!coords || !Array.isArray(coords.coordinates) || coords.coordinates.length < 2) {
+  if (!requestLocation?.coordinates || !Array.isArray(requestLocation.coordinates) || requestLocation.coordinates.length < 2) {
     return res.status(400).json({
       success: false,
-      message: 'Valid requestLocation or user.location coordinates are required',
+      message: 'Valid requestLocation.coordinates are required',
     });
   }
 
@@ -93,9 +59,10 @@ const searchDoctors = asyncHandler(async (req, res) => {
   const doctors = await Doctor.aggregate([
     {
       $geoNear: {
-        near: { type: 'Point', coordinates: coords.coordinates },
+        near: { type: 'Point', coordinates: requestLocation.coordinates },
         distanceField: 'dist.calculated',
         spherical: true,
+        maxDistance: Number(maxDistanceMeters) || 40000,
         query: {
           specialization: normalizedSpecialty,
           isAvailable: true,
@@ -120,7 +87,7 @@ const searchDoctors = asyncHandler(async (req, res) => {
     data: {
       specialty: normalizedSpecialty,
       appointmentDate: appointmentDate || null,
-      requestedLocation: coords,
+      requestLocation,
       doctorsFound,
     },
   });

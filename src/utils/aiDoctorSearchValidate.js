@@ -1,7 +1,7 @@
 module.exports = {
   type: 'object',
   additionalProperties: false,
-  required: ['specialty'],
+  required: ['specialty', 'appointmentDate', 'requestLocation'], // جعلناهم إجباريين هنا
   properties: {
     specialty: { type: 'string', minLength: 1 },
     appointmentDate: { type: 'string', minLength: 1 },
@@ -10,7 +10,7 @@ module.exports = {
     requestLocation: {
       type: 'object',
       additionalProperties: false,
-      required: ['type', 'coordinates'],
+      required: ['type', 'coordinates'], // نوع وموقع الإحداثيات إجباري أيضاً
       properties: {
         type: { const: 'Point' },
         coordinates: {
