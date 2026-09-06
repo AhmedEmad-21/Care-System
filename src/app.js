@@ -23,8 +23,15 @@ const bookingRoutes = require("./routes/bookingRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const staffRoutes = require("./routes/staffRoutes");
 const nursingServiceRoutes = require('./routes/nursingServiceRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
+const { startNotificationWorker } = require('./workers/notificationWorker');
 
 const app = express();
+
+if (process.env.REDIS_URL) {
+  startNotificationWorker();
+}
 
 app.disable("x-powered-by");
 if (config.appConfig.trustProxy) app.set("trust proxy", 1);
@@ -59,6 +66,8 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/staff", staffRoutes);
 app.use("/api/nursing-services", nursingServiceRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // مسار ترحيبي للصفحة الرئيسية
 app.get("/", (req, res) => {

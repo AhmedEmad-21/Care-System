@@ -14,6 +14,8 @@ const nurseSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     phoneNumber: { type: String, required: true, unique: true, index: true },
     location: { type: geoPointSchema, required: true },
+    rating: { type: Number, default: 0, min: 0, max: 5 },
+    totalReviews: { type: Number, default: 0, min: 0 },
     isAvailable: { type: Boolean, default: true },
     offDays: { type: [Number], default: [] }
   },

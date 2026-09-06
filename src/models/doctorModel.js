@@ -14,6 +14,8 @@ const doctorSchema = new mongoose.Schema({
   specialization: { type: String, required: true },
   location: { type: geoPointSchema, required: true },
   basePrice: { type: Number, required: true, min: 0 },
+  rating: { type: Number, default: 0, min: 0, max: 5 },
+  totalReviews: { type: Number, default: 0, min: 0 },
   profileImage: { type: String, required: false },
   addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   workingHours: {

@@ -30,12 +30,12 @@ const myBookings = asyncHandler(async (req, res) => {
   
   const [doctorBookings, nursingBookings] = await Promise.all([
     Booking.find({ patientId })
-      .populate('doctorId', 'name specialization basePrice profileImage')
-      .populate('nurseId', 'name phoneNumber profileImage')
+      .populate('doctorId', 'name specialization basePrice profileImage rating totalReviews')
+      .populate('nurseId', 'name phoneNumber profileImage rating totalReviews')
       .lean(), // إرجاع Plain JSON بحل مشكلة الـ raw documents
       
     NursingBooking.find({ patientId })
-      .populate('nurseId', 'name phoneNumber profileImage')
+      .populate('nurseId', 'name phoneNumber profileImage rating totalReviews')
       .populate('serviceId', 'name description basePrice')
       .lean() // إرجاع Plain JSON بحل مشكلة الـ raw documents
   ]);

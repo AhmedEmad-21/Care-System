@@ -1,3 +1,4 @@
 node_modules/
 .env
 *.log
+src/config/tabibak-ai-firebase-adminsdk-fbsvc-ceb7855a6e.json

@@ -79,6 +79,7 @@ const searchDoctors = asyncHandler(async (req, res) => {
     distance: doc.dist?.calculated ? formatDistance(doc.dist.calculated / 1000) : null,
     basePrice: doc.basePrice,
     rating: doc.rating || null,
+    totalReviews: doc.totalReviews || 0,
     isAvailable: doc.isAvailable,
   }));
 
