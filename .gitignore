@@ -2,3 +2,6 @@ node_modules/
 .env
 *.log
 src/config/tabibak-ai-firebase-adminsdk-fbsvc-ceb7855a6e.json
+docs/tabibak-ai-firebase-adminsdk-fbsvc-ceb7855a6e.json
+docs/*.json
+# أو تقدر تحط مجلد الـ docs بالكامل لو كله ملفات حساسة

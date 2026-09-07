@@ -1,9 +1,18 @@
+require('dotenv').config();
+
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
-const serviceAccount = require('./tabibak-ai-firebase-adminsdk-fbsvc-ceb7855a6e.json');
+
+const privateKey = process.env.FIREBASE_PRIVATE_KEY
+  ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
+  : undefined;
 
 if (!getApps().length) {
   initializeApp({
-    credential: cert(serviceAccount),
+    credential: cert({
+      project_id: process.env.FIREBASE_PROJECT_ID,
+      client_email: process.env.FIREBASE_CLIENT_EMAIL,
+      private_key: privateKey,
+    }),
   });
 }
 
