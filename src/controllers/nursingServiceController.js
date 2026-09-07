@@ -1,10 +1,33 @@
 const asyncHandler = require('../utils/asyncHandler');
 const NursingService = require('../models/nursingServiceModel');
 const { createNursingBooking } = require('../services/bookingService');
+const { buildNameFilter } = require('../utils/nameSearch');
 
 const list = asyncHandler(async (req, res) => {
   const services = await NursingService.find({ isActive: true }).lean();
   return res.json({ success: true, data: services });
+});
+
+const searchByName = asyncHandler(async (req, res) => {
+  const nameFilter = buildNameFilter(req.query.name);
+
+  if (!nameFilter) {
+    return res.status(400).json({
+      success: false,
+      message: 'يرجى إدخال اسم الخدمة للبحث عنها'
+    });
+  }
+
+  const services = await NursingService.find({
+    isActive: true,
+    ...nameFilter
+  }).lean();
+
+  return res.json({
+    success: true,
+    count: services.length,
+    data: services
+  });
 });
 
 const detail = asyncHandler(async (req, res) => {
@@ -32,4 +55,4 @@ const findNearestNurses = asyncHandler(async (req, res) => {
   res.json({ success: true, data: nurses });
 });
 
-module.exports = { list, detail, book, findNearestNurses };
+module.exports = { list, detail, searchByName, book, findNearestNurses };

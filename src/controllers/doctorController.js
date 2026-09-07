@@ -1,5 +1,10 @@
 const asyncHandler = require('../utils/asyncHandler');
 const Doctor = require('../models/doctorModel');
+const {
+  buildNameFilter,
+  findByNameWithOptionalGeo,
+  withOptionalDateFilter
+} = require('../utils/nameSearch');
 
 const listDoctors = asyncHandler(async (req, res) => {
   const { date } = req.query;
@@ -58,72 +63,27 @@ const getSpecializations = asyncHandler(async (req, res) => {
 
 const searchDoctorsByName = asyncHandler(async (req, res) => {
   const { name, specialization, lat, long, date } = req.query;
+  const nameFilter = buildNameFilter(name);
 
-  if (!name || name.trim() === '') {
+  if (!nameFilter) {
     return res.status(400).json({
       success: false,
       message: 'يرجى إدخال اسم الدكتور للبحث عنه'
     });
   }
 
-  const doctorFilter = {
-    name: { $regex: name.trim(), $options: 'i' },
+  let doctorFilter = {
     isAvailable: true,
+    ...nameFilter
   };
 
   if (specialization) {
     doctorFilter.specialization = specialization;
   }
 
-  if (date) {
-    const targetDay = new Date(date).getDay();
-    doctorFilter.offDays = { $ne: targetDay };
-  }
+  doctorFilter = withOptionalDateFilter(doctorFilter, date);
 
-  if (lat && long) {
-    const userCoordinates = [parseFloat(long), parseFloat(lat)];
-    const doctors = await Doctor.aggregate([
-      {
-        $geoNear: {
-          near: { type: "Point", coordinates: userCoordinates },
-          distanceField: "dist.calculated",
-          spherical: true,
-          maxDistance: 35000, // <--- تحديد نطاق البحث الجغرافي هنا أيضاً بـ 35 كم
-          query: doctorFilter
-        }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'userId'
-        }
-      },
-      {
-        $unwind: {
-          path: '$userId',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
-        $project: {
-          'userId.passwordHash': 0,
-          'userId.resetPasswordTokenHash': 0
-        }
-      }
-    ]);
-
-    return res.json({
-      success: true,
-      count: doctors.length,
-      data: doctors
-    });
-  }
-
-  const doctors = await Doctor.find(doctorFilter)
-    .populate('userId', 'name email phoneNumber profileImage address location')
-    .lean();
+  const doctors = await findByNameWithOptionalGeo(Doctor, doctorFilter, { lat, long });
 
   return res.json({
     success: true,

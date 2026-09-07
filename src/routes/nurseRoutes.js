@@ -6,6 +6,7 @@ const nurseController = require('../controllers/nurseController');
 const router = express.Router();
 
 router.get('/available', nurseController.listNurses);
+router.get('/search-by-name', nurseController.searchNursesByName);
 router.get('/', filterAvailableDoctorsMW, nurseController.listNurses);
 router.get('/nearby', authMW, nurseController.listNursesByService);
 

@@ -1,5 +1,10 @@
 const asyncHandler = require('../utils/asyncHandler');
 const Nurse = require('../models/nurseModel');
+const {
+  buildNameFilter,
+  findByNameWithOptionalGeo,
+  withOptionalDateFilter
+} = require('../utils/nameSearch');
 
 // 1. عرض الممرضين (القائمة الكاملة)
 const listNurses = asyncHandler(async (req, res) => {
@@ -73,9 +78,37 @@ const listNursesByService = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: nurses });
 });
 
-// تأكد من تصدير جميع الدوال المطلوبة في الـ Routes
-module.exports = { 
-  listNurses, 
-  getNurseById, 
-  listNursesByService 
+const searchNursesByName = asyncHandler(async (req, res) => {
+  const { name, lat, long, date } = req.query;
+  const nameFilter = buildNameFilter(name);
+
+  if (!nameFilter) {
+    return res.status(400).json({
+      success: false,
+      message: 'يرجى إدخال اسم الممرض للبحث عنه'
+    });
+  }
+
+  const nurseFilter = withOptionalDateFilter(
+    {
+      isAvailable: true,
+      ...nameFilter
+    },
+    date
+  );
+
+  const nurses = await findByNameWithOptionalGeo(Nurse, nurseFilter, { lat, long });
+
+  return res.json({
+    success: true,
+    count: nurses.length,
+    data: nurses
+  });
+});
+
+module.exports = {
+  listNurses,
+  getNurseById,
+  listNursesByService,
+  searchNursesByName
 };

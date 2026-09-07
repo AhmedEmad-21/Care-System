@@ -6,6 +6,7 @@ const nursingServiceController = require('../controllers/nursingServiceControlle
 
 const router = express.Router();
 
+router.get('/search-by-name', nursingServiceController.searchByName);
 router.get('/', nursingServiceController.list);
 router.get('/:id', nursingServiceController.detail);
 
