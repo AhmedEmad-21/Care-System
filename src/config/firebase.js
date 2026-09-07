@@ -2,9 +2,12 @@ require('dotenv').config();
 
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 
-const privateKey = process.env.FIREBASE_PRIVATE_KEY
-  ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-  : undefined;
+let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+if (privateKey) {
+  privateKey = privateKey.replace(/^['"]|['"]$/g, '');
+  privateKey = privateKey.replace(/\\n/g, '\n');
+}
 
 if (!getApps().length) {
   initializeApp({
