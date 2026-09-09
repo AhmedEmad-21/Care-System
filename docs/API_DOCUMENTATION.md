@@ -16,7 +16,8 @@
 3. [Shared Schemas](#3-shared-schemas)
 4. [Auth — `/api/auth`](#4-auth--apiauth)
 5. [Doctors — `/api/doctors`](#5-doctors--apidoctors)
-6. [Nurses — `/api/nurses`](#6-nurses--apinurses)
+
+. [Nurses — `/api/nurses`](#6-nurses--apinurses)
 7. [Bookings — `/api/bookings`](#7-bookings--apibookings)
 8. [Nursing Services — `/api/nursing-services`](#8-nursing-services--apinursing-services)
 9. [AI — `/api/ai`](#9-ai--apiai)

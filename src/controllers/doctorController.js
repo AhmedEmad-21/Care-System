@@ -92,10 +92,86 @@ const searchDoctorsByName = asyncHandler(async (req, res) => {
   });
 });
 
+// Endpoint الفلترة المرنة (تخصص، تاريخ، موقع - منفردين أو مجتمعين بدون اسم)
+const filterDoctors = asyncHandler(async (req, res) => {
+  const { specialization, date, lat, long } = req.query;
+  
+  let query = { isAvailable: true };
+
+  if (specialization) {
+    query.specialization = specialization;
+  }
+
+  if (date) {
+    const targetDay = new Date(date).getDay();
+    query.offDays = { $ne: targetDay };
+  }
+
+  if (lat && long) {
+    const userCoordinates = [parseFloat(long), parseFloat(lat)];
+    
+    if (isNaN(userCoordinates[0]) || isNaN(userCoordinates[1])) {
+      return res.status(400).json({
+        success: false,
+        message: 'إحداثيات الموقع غير صالحة'
+      });
+    }
+
+    const doctors = await Doctor.aggregate([
+      {
+        $geoNear: {
+          near: { type: "Point", coordinates: userCoordinates },
+          distanceField: "dist.calculated",
+          spherical: true,
+          maxDistance: 35000,
+          query: query
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'userId'
+        }
+      },
+      {
+        $unwind: {
+          path: '$userId',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          'userId.passwordHash': 0,
+          'userId.resetPasswordTokenHash': 0
+        }
+      }
+    ]);
+
+    return res.json({
+      success: true,
+      count: doctors.length,
+      data: doctors
+    });
+  }
+
+  const doctors = await Doctor.find(query)
+    .populate('userId', 'name email phoneNumber profileImage address location')
+    .lean();
+
+  return res.json({
+    success: true,
+    count: doctors.length,
+    data: doctors
+  });
+});
+
 module.exports = { 
   listDoctors, 
   getDoctorById, 
   listAvailableDoctors, 
   getSpecializations, 
-  searchDoctorsByName 
+  searchDoctorsByName,
+  filterDoctors
 };

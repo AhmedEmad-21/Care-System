@@ -8,6 +8,7 @@ router.get('/specializations', doctorController.getSpecializations);
 router.get('/available', doctorController.listDoctors);
 
 router.get('/search-by-name', doctorController.searchDoctorsByName);
+router.get('/filter', doctorController.filterDoctors);
 
 router.get('/search', authMW, doctorController.listAvailableDoctors);
 router.get('/', filterAvailableDoctorsMW, doctorController.listDoctors);

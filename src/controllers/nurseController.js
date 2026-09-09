@@ -12,21 +12,18 @@ const listNurses = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: nurses });
 });
 
-// 2. عرض تفاصيل ممرض واحد (الدالة المفقودة)
+// 2. عرض تفاصيل ممرض واحد
 const getNurseById = asyncHandler(async (req, res) => {
   const nurse = await Nurse.findById(req.params.id).populate('userId');
   if (!nurse) return res.status(404).json({ success: false, message: 'Nurse not found' });
   return res.json({ success: true, data: nurse });
 });
 
-// 3. البحث عن ممرضين حسب الخدمة والموقع
-// البحث عن ممرضين حسب الموقع فقط (بدون التقيد بخدمة معينة)
+// 3. البحث عن ممرضين حسب الموقع والخدمة
 const listNursesByService = asyncHandler(async (req, res) => {
-  // دعم الاستقبال كـ Query Parameters منفصلة أو داخل Object لو متاح
   let lng = req.query.lng;
   let lat = req.query.lat;
 
-  // لو الـ Frontend بيبعت الإحداثيات بطريقة تانية (مثل requestLocation كـ JSON string أو أوبجكت)
   if ((!lng || !lat) && req.query.requestLocation) {
     try {
       const parsedLoc = JSON.parse(req.query.requestLocation);
@@ -34,12 +31,9 @@ const listNursesByService = asyncHandler(async (req, res) => {
         lng = parsedLoc.coordinates[0];
         lat = parsedLoc.coordinates[1];
       }
-    } catch (e) {
-      // لو مش JSON صالح، تجاهل الخطأ واعتمد على موقع المستخدم من بيانات الحساب
-    }
+    } catch (e) {}
   }
 
-  // fallback الأساسي: استخدم موقع المستخدم المحفوظ في بيانات الحساب لو ماحدش أرسل إحداثيات
   if ((!lng || !lat) && req.user?.location?.coordinates) {
     const [userLng, userLat] = req.user.location.coordinates;
     if (Number.isFinite(userLng) && Number.isFinite(userLat)) {
@@ -48,7 +42,6 @@ const listNursesByService = asyncHandler(async (req, res) => {
     }
   }
 
-  // التأكد من وجود الإحداثيات وأنها أرقام سليمة
   if (lng === undefined || lat === undefined || isNaN(lng) || isNaN(lat)) {
     return res.status(400).json({ 
       success: false, 
@@ -106,9 +99,82 @@ const searchNursesByName = asyncHandler(async (req, res) => {
   });
 });
 
+// Endpoint الفلترة المرنة للممرضين (تاريخ، موقع - منفردين أو مع بعض بدون اسم)
+const filterNurses = asyncHandler(async (req, res) => {
+  const { date, lat, long } = req.query;
+
+  let query = { isAvailable: true };
+
+  if (date) {
+    const dayOfWeek = new Date(date).getDay();
+    query.offDays = { $ne: dayOfWeek };
+  }
+
+  if (lat && long) {
+    const lngVal = parseFloat(long);
+    const latVal = parseFloat(lat);
+
+    if (isNaN(lngVal) || isNaN(latVal)) {
+      return res.status(400).json({
+        success: false,
+        message: 'إحداثيات الموقع غير صالحة'
+      });
+    }
+
+    const nurses = await Nurse.aggregate([
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates: [lngVal, latVal] },
+          distanceField: 'dist.calculated',
+          spherical: true,
+          maxDistance: 40000,
+          query: query
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'userId'
+        }
+      },
+      {
+        $unwind: {
+          path: '$userId',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          'userId.passwordHash': 0,
+          'userId.resetPasswordTokenHash': 0
+        }
+      }
+    ]);
+
+    return res.json({
+      success: true,
+      count: nurses.length,
+      data: nurses
+    });
+  }
+
+  const nurses = await Nurse.find(query)
+    .populate('userId', 'name email phoneNumber profileImage address location')
+    .lean();
+
+  return res.json({
+    success: true,
+    count: nurses.length,
+    data: nurses
+  });
+});
+
 module.exports = {
   listNurses,
   getNurseById,
   listNursesByService,
-  searchNursesByName
+  searchNursesByName,
+  filterNurses
 };

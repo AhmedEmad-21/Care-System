@@ -7,6 +7,8 @@ const router = express.Router();
 
 router.get('/available', nurseController.listNurses);
 router.get('/search-by-name', nurseController.searchNursesByName);
+router.get('/filter', nurseController.filterNurses);
+
 router.get('/', filterAvailableDoctorsMW, nurseController.listNurses);
 router.get('/nearby', authMW, nurseController.listNursesByService);
 
