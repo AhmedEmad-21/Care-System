@@ -1,31 +1,26 @@
 module.exports = {
   type: 'object',
   additionalProperties: false,
-  required: ['name', 'phoneNumber', 'address', 'location', 'basePrice', 'specialization'],
+  required: ['name', 'email', 'password', 'phoneNumber', 'address', 'location', 'basePrice', 'specialization'],
   properties: {
     name: { type: 'string', minLength: 1 },
+    email: { type: 'string', format: 'email' },
+    password: {
+      type: 'string',
+      minLength: 8,
+      pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+    },
     phoneNumber: { type: 'string', pattern: "^01[0125][0-9]{8}$" },
     secondaryPhoneNumber: { type: 'string', pattern: "^01[0125][0-9]{8}$" },
     address: { type: 'string', minLength: 1 },
     specialization: { 
-  type: 'string', 
-  enum: [
-    'باطنة', 
-    'صدرية', 
-    'نفسية', 
-    'قلب وأوعية دموية', 
-    'عظام', 
-    'جلدية', 
-    'رمد', 
-    'أسنان', 
-    'مخ وأعصاب', 
-    'جهاز هضمي وكبد', 
-    'أنف وأذن وحنجرة', 
-    'جراحة عامة', 
-    'نسا وتوليد', 
-    'أطفال'
-  ] 
-},
+      type: 'string', 
+      enum: [
+        'باطنة', 'صدرية', 'نفسية', 'قلب وأوعية دموية', 'عظام', 
+        'جلدية', 'رمد', 'أسنان', 'مخ وأعصاب', 'جهاز هضمي وكبد', 
+        'أنف وأذن وحنجرة', 'جراحة عامة', 'نسا وتوليد', 'أطفال'
+      ] 
+    },
     basePrice: { type: 'number', minimum: 0 },
     profileImage: { type: 'string', minLength: 1 },
     location: {

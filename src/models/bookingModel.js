@@ -21,6 +21,12 @@ const geoPointSchema = new mongoose.Schema(
 
 const bookingSchema = new mongoose.Schema(
   {
+    // رقم حجز تسلسلي تصاعدي (1000, 1001, ...)
+    bookingNumber: {
+      type: Number,
+      unique: true,
+      index: true,
+    },
     patientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -37,7 +43,6 @@ const bookingSchema = new mongoose.Schema(
       ref: 'Nurse',
       default: null,
     },
-    // تم إضافة حقل اللوكيشن هنا ليتم حفظه في الداتا بيز
     requestLocation: {
       type: geoPointSchema,
       default: null,
@@ -55,6 +60,16 @@ const bookingSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+    // الحقول المالية والتسوية الأسبوعية
+    isSettled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    settledAt: {
+      type: Date,
+      default: null,
     },
     status: {
       type: String,
@@ -75,6 +90,21 @@ const bookingSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// توليد رقم حجز تسلسلي تلقائياً قبل التحقق والحفظ
+bookingSchema.pre('validate', async function (next) {
+  if (!this.bookingNumber) {
+    try {
+      const lastBooking = await mongoose.model('Booking').findOne().sort({ bookingNumber: -1 });
+      this.bookingNumber = lastBooking && typeof lastBooking.bookingNumber === 'number' 
+        ? lastBooking.bookingNumber + 1 
+        : 1000;
+    } catch (error) {
+      return next(error);
+    }
+  }
+  next();
+});
 
 bookingSchema.index({ requestLocation: '2dsphere' });
 bookingSchema.index({ patientId: 1, status: 1, createdAt: -1 });

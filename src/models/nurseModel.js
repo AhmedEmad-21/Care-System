@@ -14,6 +14,7 @@ const nurseSchema = new mongoose.Schema(
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     phoneNumber: { type: String, required: true, unique: true, index: true },
     location: { type: geoPointSchema, required: true },
+    commissionRate: { type: Number, default: 10, min: 0 }, // نسبة العمولة الخاصة بالممرض للمنصة
     rating: { type: Number, default: 0, min: 0, max: 5 },
     totalReviews: { type: Number, default: 0, min: 0 },
     isAvailable: { type: Boolean, default: true },
@@ -22,9 +23,6 @@ const nurseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// فهرس الجغرافيا للبحث (مطلوب للـ $geoNear)
 nurseSchema.index({ location: '2dsphere' });
-
-// تم حذف السطر الخاص بالـ unique index على الـ coordinates للسماح بتكرار الموقع
 
 module.exports = mongoose.model('Nurse', nurseSchema);

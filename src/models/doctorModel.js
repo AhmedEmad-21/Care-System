@@ -14,6 +14,7 @@ const doctorSchema = new mongoose.Schema({
   specialization: { type: String, required: true },
   location: { type: geoPointSchema, required: true },
   basePrice: { type: Number, required: true, min: 0 },
+  commissionRate: { type: Number, default: 10, min: 0 }, // نسبة العمولة الخاصة بالدكتور للمنصة
   rating: { type: Number, default: 0, min: 0, max: 5 },
   totalReviews: { type: Number, default: 0, min: 0 },
   profileImage: { type: String, required: false },
@@ -26,10 +27,7 @@ const doctorSchema = new mongoose.Schema({
   isAvailable: { type: Boolean, default: true }
 }, { timestamps: true });
 
-// فهرس الـ 2dsphere للبحث الجغرافي
 doctorSchema.index({ location: '2dsphere' });
-
-// فهرس فريد لمنع وجود طبيبين في نفس الإحداثيات بالضبط
 doctorSchema.index({ "location.coordinates": 1 }, { unique: true });
 
 module.exports = mongoose.model('Doctor', doctorSchema);

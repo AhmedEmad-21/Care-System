@@ -1,10 +1,17 @@
 module.exports = {
   type: 'object',
   additionalProperties: false,
-  required: ['name', 'phoneNumber', 'location'],
+  required: ['name', 'email', 'password', 'phoneNumber', 'address', 'location'],
   properties: {
     name: { type: 'string', minLength: 1 },
+    email: { type: 'string', format: 'email' },
+    password: {
+      type: 'string',
+      minLength: 8,
+      pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+    },
     phoneNumber: { type: 'string', pattern: "^01[0125][0-9]{8}$" },
+    address: { type: 'string', minLength: 1 },
     location: {
       type: 'object',
       required: ['type', 'coordinates'],
@@ -14,6 +21,7 @@ module.exports = {
       }
     },
     services: { type: 'array', items: { type: 'string' } },
+    experience: { type: 'string', minLength: 1 },
     offDays: { 
       type: 'array', 
       items: { 

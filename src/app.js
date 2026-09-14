@@ -7,7 +7,7 @@ const morgan = require("morgan");
 const helmet = require("helmet");
 const hpp = require("hpp");
 const config = require("./config/appConfig");
-
+const http = require('http');
 // Middlewares
 const requestLogger = require("./middlewares/requestLoggerMW");
 const inputSanitizerMW = require("./middlewares/inputSanitizerMW");
@@ -101,5 +101,17 @@ if (require.main === module) {
   startServer();
 }
 
+const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000; // 10 دقائق
 
+setInterval(() => {
+  const serverUrl = process.env.EXTERNAL_URL || `http://localhost:${config.port}`;
+  
+  const client = serverUrl.startsWith('https') ? require('https') : http;
+  
+  client.get(serverUrl, (res) => {
+    console.log(`💡 [Keep-Alive] Self-ping status: ${res.statusCode}`);
+  }).on('error', (err) => {
+    console.error(`⚠️ [Keep-Alive] Ping error: ${err.message}`);
+  });
+}, KEEP_ALIVE_INTERVAL);
 module.exports = app;
