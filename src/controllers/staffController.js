@@ -412,17 +412,17 @@ const createNurse = asyncHandler(async (req, res) => {
   }
 });
 
-// إنشاء حساب Staff أو Admin جديد
+// إنشاء حساب Staff أو Admin جديد (مُحدث لاستقبال رقم الهاتف)
 const createStaffOrAdmin = asyncHandler(async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, phoneNumber } = req.body;
 
     const user = await User.create({
       role,
       name,
       email,
       passwordHash: password,
-      phoneNumber: '01000000000',
+      phoneNumber, // تم استبدال القيمة الثابتة بالرقم القادم من الطلب
       address: 'الإدارة',
       accountStatus: 'active',
       vettingStatus: 'approved',
@@ -435,7 +435,7 @@ const createStaffOrAdmin = asyncHandler(async (req, res) => {
       action: `CREATE_${role.toUpperCase()}`, 
       entityId: user._id, 
       entityType: 'User', 
-      meta: { name, email, role } 
+      meta: { name, email, role, phoneNumber } 
     });
 
     return res.status(201).json({ 
@@ -445,12 +445,19 @@ const createStaffOrAdmin = asyncHandler(async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email, 
-        role: user.role 
+        role: user.role,
+        phoneNumber: user.phoneNumber 
       } 
     });
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({ success: false, message: 'هذا البريد الإلكتروني مستخدم بالفعل' });
+      const message = error.keyValue.email 
+        ? 'هذا البريد الإلكتروني مستخدم بالفعل' 
+        : error.keyValue.phoneNumber 
+        ? 'رقم الهاتف هذا مستخدم بالفعل لحساب آخر' 
+        : 'هناك بيانات مسجلة مسبقاً بنفس القيمة';
+        
+      return res.status(409).json({ success: false, message });
     }
     throw error;
   }

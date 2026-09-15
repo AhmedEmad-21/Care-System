@@ -34,7 +34,7 @@ router.get('/providers/:id/financial-summary', authMW, checkRoleMW('STAFF', 'ADM
 
 router.get('/providers/availability', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.providerAvailability);
 router.get('/doctors/status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.doctorsStatus);
-router.get('/analytics', authMW, checkRoleMW('ADMIN'), staffController.analytics);
+router.get('/analytics', authMW, checkRoleMW('STAFF','ADMIN'), staffController.analytics);
 router.patch('/providers/:type/:id/toggle-status', authMW, checkRoleMW('ADMIN'), staffController.toggleProviderStatus);
 
 // مسارات إنشاء وتعديل الأطباء والممرضين والخدمات
