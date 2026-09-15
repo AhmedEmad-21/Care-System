@@ -206,6 +206,8 @@ const updateBookingStatus = async ({ bookingId, status, appointmentTime, staffNo
   });
 
   const providerLabel = booking.doctorId ? 'Doctor' : booking.nurseId ? 'Nurse' : 'Provider';
+  const providerId = booking.doctorId || booking.nurseId;
+  
   const notificationTitleMap = {
     [BOOKING_STATUSES.CONFIRMED]: 'تم تأكيد الحجز',
     [BOOKING_STATUSES.CANCELLED]: 'تم إلغاء الحجز',
@@ -216,21 +218,29 @@ const updateBookingStatus = async ({ bookingId, status, appointmentTime, staffNo
   const notificationBodyMap = {
     [BOOKING_STATUSES.CONFIRMED]: `تم تأكيد موعدك مع ${providerLabel} بنجاح`,
     [BOOKING_STATUSES.CANCELLED]: `تم إلغاء موعدك مع ${providerLabel}`,
-    [BOOKING_STATUSES.COMPLETED]: `تم تحديث حالتك إلى مكتمل مع ${providerLabel}`,
+    [BOOKING_STATUSES.COMPLETED]: `تم إتمام زيارتك بنجاح. نرجو منك تقييم تجربتك ⭐`,
     [BOOKING_STATUSES.REJECTED]: `تم رفض طلب الحجز الخاص بك`,
   };
 
   if (booking.patientId && notificationTitleMap[booking.status]) {
+    // بناء بيانات إضافية مخصصة لو الحالة completed عشان تفتح شاشة التقييم في الفرونت
+    const notificationData = {
+      bookingId: booking._id.toString(),
+      status: booking.status,
+      providerType: providerLabel, // 'Doctor' أو 'Nurse' متوافقة مع الـ reviewService
+    };
+
+    if (booking.status === BOOKING_STATUSES.COMPLETED && providerId) {
+      notificationData.providerId = providerId.toString();
+      notificationData.action = 'open_review_screen';
+    }
+
     await sendNotificationToUser({
       userId: booking.patientId,
       title: notificationTitleMap[booking.status],
       body: notificationBodyMap[booking.status],
-      type: 'booking_status',
-      data: {
-        bookingId: booking._id,
-        status: booking.status,
-        providerType: providerLabel,
-      },
+      type: booking.status === BOOKING_STATUSES.COMPLETED ? 'review_prompt' : 'booking_status',
+      data: notificationData,
     });
   }
 

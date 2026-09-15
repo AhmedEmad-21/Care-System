@@ -66,12 +66,16 @@ const updateProviderReviewStats = async ({ providerType, providerId }) => {
   return { rating, totalReviews };
 };
 
-const addReview = async ({ reviewerId, providerId, providerType, rating, comment = null }) => {
+const addReview = async ({ reviewerId, providerId, providerType, rating, comment = null, bookingId = null }) => {
   const normalizedProviderType = normalizeProviderType(providerType);
   const numericRating = Number(rating);
 
   assertValidObjectId(providerId, 'providerId');
   assertValidObjectId(reviewerId, 'patientId');
+
+  if (bookingId) {
+    assertValidObjectId(bookingId, 'bookingId');
+  }
 
   if (!Number.isInteger(numericRating) || numericRating < 1 || numericRating > 5) {
     throw new BadRequestError('rating must be an integer between 1 and 5');
@@ -85,31 +89,57 @@ const addReview = async ({ reviewerId, providerId, providerType, rating, comment
     throw new NotFoundError('Provider not found');
   }
 
-  const completedBooking = await BookingModel.findOne({
-    patientId: reviewerId,
-    [providerField]: providerId,
-    status: 'completed',
-  })
-    .sort({ updatedAt: -1, createdAt: -1 })
-    .lean();
+  let completedBooking;
 
-  if (!completedBooking) {
-    throw new BadRequestError('عفواً، لا يمكنك كتابة تقييم إلا بعد إتمام زيارة مكتملة ومؤكدة عبر التطبيق');
-  }
+  if (bookingId) {
+    // لو تم إرسال الـ bookingId (من الإشعار مثلاً)، نتحقق منه مباشرة
+    completedBooking = await BookingModel.findOne({
+      _id: bookingId,
+      patientId: reviewerId,
+      [providerField]: providerId,
+      status: 'completed',
+    }).lean();
 
-  const review = await Review.findOneAndUpdate(
-    { patientId: reviewerId, providerId },
-    {
+    if (!completedBooking) {
+      throw new BadRequestError('الحجز المحدد غير موجود، أو لم تتم إصداره كحجز مكتمل لهذا المزود');
+    }
+
+    // التحقق عما إذا كان تم تقييم هذا الحجز بالذات مسبقاً لمنع التكرار لنفس الحجز
+    const existingReviewForBooking = await Review.findOne({ bookingId: completedBooking._id }).lean();
+    if (existingReviewForBooking) {
+      throw new BadRequestError('لقد قمت بالفعل بتقييم هذا الحجز مسبقاً');
+    }
+  } else {
+    // لو لم يتم إرسال bookingId، نبحث عن أحدث حجز مكتمل لهذا المزود ولم يتم تقييمه بعد
+    const alreadyReviewedBookingIds = await Review.find({
       patientId: reviewerId,
       providerId,
-      providerModel: normalizedProviderType,
-      bookingId: completedBooking._id,
-      bookingModel,
-      rating: numericRating,
-      comment: comment ? String(comment).trim() : null,
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  );
+    }).distinct('bookingId');
+
+    completedBooking = await BookingModel.findOne({
+      patientId: reviewerId,
+      [providerField]: providerId,
+      status: 'completed',
+      _id: { $nin: alreadyReviewedBookingIds },
+    })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    if (!completedBooking) {
+      throw new BadRequestError('عفواً، لا يوجد لديك زيارات مكتملة جديدة مع هذا المزود لم تقم بتقييمها بعد');
+    }
+  }
+
+  // إنشاء تقييم جديد مستقل لكل حجز مكتمل
+  const review = await Review.create({
+    patientId: reviewerId,
+    providerId,
+    providerModel: normalizedProviderType,
+    bookingId: completedBooking._id,
+    bookingModel,
+    rating: numericRating,
+    comment: comment ? String(comment).trim() : null,
+  });
 
   const stats = await updateProviderReviewStats({
     providerType: normalizedProviderType,

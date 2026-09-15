@@ -9,6 +9,7 @@ const postReview = asyncHandler(async (req, res) => {
     providerType: req.body.providerType,
     rating: req.body.rating,
     comment: req.body.comment,
+    bookingId: req.body.bookingId, // <-- تم إضافتها هنا لتمرير الـ bookingId القادم من الفرونت أو الإشعار
   });
 
   return res.status(201).json({
