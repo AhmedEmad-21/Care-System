@@ -25,8 +25,11 @@ const staffRoutes = require("./routes/staffRoutes");
 const nursingServiceRoutes = require('./routes/nursingServiceRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
-const providerDashboardRoutes = require('./routes/providerDashboardRoutes'); // [جديد] لوحة تحكم مزودي الخدمة الموحدة
+const providerDashboardRoutes = require('./routes/providerDashboardRoutes'); // لوحة تحكم مزودي الخدمة الموحدة
 const { startNotificationWorker } = require('./workers/notificationWorker');
+
+// [جديد] استيراد مهمة التذكير التلقائي للتقييمات
+const { initReviewReminderCron } = require('./cron/reviewReminderCron');
 
 const app = express();
 
@@ -69,7 +72,7 @@ app.use("/api/staff", staffRoutes);
 app.use("/api/nursing-services", nursingServiceRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/provider-dashboard', providerDashboardRoutes); // [جديد] ربط مسارات لوحة التحكم
+app.use('/api/provider-dashboard', providerDashboardRoutes); // ربط مسارات لوحة التحكم
 
 // مسار ترحيبي للصفحة الرئيسية
 app.get("/", (req, res) => {
@@ -95,6 +98,10 @@ app.use(errorHandler);
 // تشغيل السيرفر والاتصال بالقاعدة معاً
 const startServer = async () => {
   await connectDB();
+  
+  // [جديد] تفعيل مهمة الـ Cron Job الخاصة بتذكير التقييمات بمجرد تشغيل السيرفر
+  initReviewReminderCron();
+
   app.listen(config.port, () => {
     console.log(`🚀 Server running on port ${config.port}`);
   });
