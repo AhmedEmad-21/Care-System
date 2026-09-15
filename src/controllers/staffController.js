@@ -99,7 +99,7 @@ const getCompletedBookingsForSettlement = asyncHandler(async (req, res) => {
 
   const bookings = await Booking.find(query)
     .populate('patientId', 'name phoneNumber')
-    .populate('doctorId', 'name specialization commissionRate basePrice')
+    .populate('doctorId', 'name specialization commissionRate basePrice urgentPrice')
     .populate('nurseId', 'name commissionRate')
     .sort({ updatedAt: -1 });
 
@@ -154,7 +154,7 @@ const settleBookings = asyncHandler(async (req, res) => {
 const getBookingDetails = asyncHandler(async (req, res) => {
   const booking = await Booking.findById(req.params.id)
     .populate('patientId', 'name phoneNumber email')
-    .populate('doctorId', 'name specialization commissionRate basePrice')
+    .populate('doctorId', 'name specialization commissionRate basePrice urgentPrice')
     .populate('nurseId', 'name commissionRate')
     .populate('confirmedByStaffId', 'name');
 
@@ -165,7 +165,7 @@ const getBookingDetails = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: booking });
 });
 
-// 7. جلب الملخص المالي لمزود الخدمة (مع الاعتماد على نسبة العمولة الخاصة به)
+// 7. جلب الملخص المالي لمزود الخدمة
 const getProviderFinancialSummary = asyncHandler(async (req, res) => {
   const { id } = req.params;
   
@@ -263,10 +263,10 @@ const toggleProviderStatus = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: { isAvailable: provider.isAvailable } });
 });
 
-// 9. إنشاء طبيب جديد (مع إجبار إدخال commissionRate)
+// 9. إنشاء طبيب جديد (مع إجبار commissionRate فقط، وباقي الحقول مثل urgentPrice و profileImage اختيارية)
 const createDoctor = asyncHandler(async (req, res) => {
   try {
-    const { email, password, name, phoneNumber, address, profileImage, location, commissionRate, ...doctorData } = req.body;
+    const { email, password, name, phoneNumber, address, profileImage, location, basePrice, urgentPrice, commissionRate, ...doctorData } = req.body;
 
     if (commissionRate === undefined) {
       return res.status(400).json({ success: false, message: 'نسبة العمولة (commissionRate) مطلوبة' });
@@ -279,7 +279,7 @@ const createDoctor = asyncHandler(async (req, res) => {
       passwordHash: password,
       phoneNumber,
       address: address || 'عنوان الطبيب',
-      profileImage,
+      profileImage: profileImage || undefined,
       location,
       createdByAdminID: req.user.id || req.user._id
     });
@@ -289,9 +289,11 @@ const createDoctor = asyncHandler(async (req, res) => {
       name,
       phoneNumber,
       address,
-      profileImage,
+      profileImage: profileImage || undefined,
       location,
-      commissionRate, // حفظ النسبة المدخلة
+      basePrice,
+      urgentPrice: urgentPrice !== undefined ? urgentPrice : undefined, 
+      commissionRate, 
       userId: user._id,
       addedBy: req.user.id || req.user._id
     });
@@ -302,7 +304,7 @@ const createDoctor = asyncHandler(async (req, res) => {
       action: 'CREATE_DOCTOR', 
       entityId: doctor._id, 
       entityType: 'Doctor',
-      meta: { name, commissionRate } 
+      meta: { name, basePrice, urgentPrice, commissionRate } 
     });
 
     return res.status(201).json({ success: true, data: { doctor, user: { email: user.email, role: user.role } } });
@@ -357,10 +359,10 @@ const listAuditLogsHandler = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: logs });
 });
 
-// 10. إنشاء ممرض جديد (مع إجبار إدخال commissionRate)
+// 10. إنشاء ممرض جديد (مع إجبار commissionRate فقط، و profileImage اختيارية)
 const createNurse = asyncHandler(async (req, res) => {
   try {
-    const { email, password, name, phoneNumber, address, location, commissionRate, ...nurseData } = req.body;
+    const { email, password, name, phoneNumber, address, location, profileImage, commissionRate, ...nurseData } = req.body;
 
     if (commissionRate === undefined) {
       return res.status(400).json({ success: false, message: 'نسبة العمولة (commissionRate) مطلوبة' });
@@ -373,6 +375,7 @@ const createNurse = asyncHandler(async (req, res) => {
       passwordHash: password,
       phoneNumber,
       address: address || 'عنوان الممرض',
+      profileImage: profileImage || undefined,
       location,
       createdByAdminID: req.user.id || req.user._id
     });
@@ -382,7 +385,8 @@ const createNurse = asyncHandler(async (req, res) => {
       name,
       phoneNumber,
       location,
-      commissionRate, // حفظ النسبة المدخلة
+      profileImage: profileImage || undefined, 
+      commissionRate, 
       userId: user._id,
       addedBy: req.user.id || req.user._id
     });

@@ -17,12 +17,13 @@ module.exports = {
       type: 'string', 
       enum: [
         'باطنة', 'صدرية', 'نفسية', 'قلب وأوعية دموية', 'عظام', 
-        'جلدية', 'رمد', 'أسنان', 'مخ وأعصاب', 'جهاز هضمي وكبد', 
+        'جلدية', 'رمد', 'أسنان', 'مخ وأعصاب', 'جهاز هضمي وخبد', 
         'أنف وأذن وحنجرة', 'جراحة عامة', 'نسا وتوليد', 'أطفال'
       ] 
     },
     basePrice: { type: 'number', minimum: 0 },
-    commissionRate: { type: 'number', minimum: 0, maximum: 100 }, // [جديد] نسبة العمولة
+    urgentPrice: { type: 'number', minimum: 0 }, // [جديد] الكشف المستعجل
+    commissionRate: { type: 'number', minimum: 0, maximum: 100 }, 
     profileImage: { type: 'string', minLength: 1 },
     location: {
       type: 'object',

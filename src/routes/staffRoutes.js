@@ -47,6 +47,6 @@ router.get('/audit-logs', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController
 router.post('/nurses', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(require('../utils/staffNurseCreateValidate')), staffController.createNurse);
 
 // مسار إنشاء حساب Staff أو Admin جديد
-router.post('/accounts', authMW, checkRoleMW('ADMIN'), validateAjvMW(staffAccountSchema), staffController.createStaffOrAdmin);
+router.post('/accounts', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(staffAccountSchema), staffController.createStaffOrAdmin);
 
 module.exports = router;

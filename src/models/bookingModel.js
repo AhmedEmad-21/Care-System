@@ -91,19 +91,14 @@ const bookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// توليد رقم حجز تسلسلي تلقائياً قبل التحقق والحفظ
-bookingSchema.pre('validate', async function (next) {
+// توليد رقم حجز تسلسلي تلقائياً قبل التحقق والحفظ (بدون استخدام next مع الـ async)
+bookingSchema.pre('validate', async function () {
   if (!this.bookingNumber) {
-    try {
-      const lastBooking = await mongoose.model('Booking').findOne().sort({ bookingNumber: -1 });
-      this.bookingNumber = lastBooking && typeof lastBooking.bookingNumber === 'number' 
-        ? lastBooking.bookingNumber + 1 
-        : 1000;
-    } catch (error) {
-      return next(error);
-    }
+    const lastBooking = await mongoose.model('Booking').findOne().sort({ bookingNumber: -1 });
+    this.bookingNumber = lastBooking && typeof lastBooking.bookingNumber === 'number' 
+      ? lastBooking.bookingNumber + 1 
+      : 1000;
   }
-  next();
 });
 
 bookingSchema.index({ requestLocation: '2dsphere' });
