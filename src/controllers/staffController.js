@@ -5,18 +5,18 @@ const NursingService = require('../models/nursingServiceModel');
 const Booking = require('../models/bookingModel');
 const NursingBooking = require('../models/nursingBookingModel');
 const AuditLog = require('../models/auditLogModel');
-const User = require('../models/userModel'); // <-- تم إضافة استيراد نموذج المستخدم
+const User = require('../models/userModel');
 const { cancelBooking } = require('../services/bookingService');
 const { logAuditEvent, listAuditLogs } = require('../services/auditLogService');
 
-// 1. عرض ومتابعة جميع الحجوزات مع إمكانية الفلترة الشاملة (حالة الحجز، المزود، والفترة الزمنية)
+// 1. عرض ومتابعة جميع الحجوزات مع إمكانية الفلترة الشاملة
 const listAllBookings = asyncHandler(async (req, res) => {
   const { status, providerId, startDate, endDate, limit } = req.query;
 
   let query = {};
 
   if (status) {
-    query.status = status; // مثال: pending, confirmed, completed, cancelled
+    query.status = status;
   }
 
   if (providerId) {
@@ -165,9 +165,17 @@ const getBookingDetails = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: booking });
 });
 
-// 7. جلب الملخص المالي لمزود الخدمة
+// 7. جلب الملخص المالي لمزود الخدمة (مع الاعتماد على نسبة العمولة الخاصة به)
 const getProviderFinancialSummary = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  
+  const provider = await Doctor.findById(id) || await Nurse.findById(id);
+  if (!provider) {
+    return res.status(404).json({ success: false, message: 'مزود الخدمة غير موجود' });
+  }
+
+  const rate = provider.commissionRate ?? 10;
+
   const bookings = await Booking.find({ 
     $or: [{ doctorId: id }, { nurseId: id }],
     status: 'completed'
@@ -179,7 +187,6 @@ const getProviderFinancialSummary = asyncHandler(async (req, res) => {
 
   bookings.forEach(b => {
     const cost = b.totalCost || 0;
-    const rate = 10; 
     const providerShare = cost - (cost * rate) / 100;
 
     totalEarnings += providerShare;
@@ -194,6 +201,7 @@ const getProviderFinancialSummary = asyncHandler(async (req, res) => {
     success: true,
     data: {
       providerId: id,
+      commissionRate: rate,
       totalCompletedBookings: bookings.length,
       totalEarnings,
       settledAmount,
@@ -255,11 +263,15 @@ const toggleProviderStatus = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: { isAvailable: provider.isAvailable } });
 });
 
+// 9. إنشاء طبيب جديد (مع إجبار إدخال commissionRate)
 const createDoctor = asyncHandler(async (req, res) => {
   try {
-    const { email, password, name, phoneNumber, address, profileImage, location, ...doctorData } = req.body;
+    const { email, password, name, phoneNumber, address, profileImage, location, commissionRate, ...doctorData } = req.body;
 
-    // 1. إنشاء حساب المستخدم أولاً ليتمكن الطبيب من تسجيل الدخول
+    if (commissionRate === undefined) {
+      return res.status(400).json({ success: false, message: 'نسبة العمولة (commissionRate) مطلوبة' });
+    }
+
     const user = await User.create({
       role: 'Doctor',
       name,
@@ -272,7 +284,6 @@ const createDoctor = asyncHandler(async (req, res) => {
       createdByAdminID: req.user.id || req.user._id
     });
 
-    // 2. إنشاء سجل الطبيب وربطه بالـ userId الخاص بحسابه الجديد
     const doctor = await Doctor.create({
       ...doctorData,
       name,
@@ -280,6 +291,7 @@ const createDoctor = asyncHandler(async (req, res) => {
       address,
       profileImage,
       location,
+      commissionRate, // حفظ النسبة المدخلة
       userId: user._id,
       addedBy: req.user.id || req.user._id
     });
@@ -290,7 +302,7 @@ const createDoctor = asyncHandler(async (req, res) => {
       action: 'CREATE_DOCTOR', 
       entityId: doctor._id, 
       entityType: 'Doctor',
-      meta: { name } 
+      meta: { name, commissionRate } 
     });
 
     return res.status(201).json({ success: true, data: { doctor, user: { email: user.email, role: user.role } } });
@@ -345,11 +357,15 @@ const listAuditLogsHandler = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: logs });
 });
 
+// 10. إنشاء ممرض جديد (مع إجبار إدخال commissionRate)
 const createNurse = asyncHandler(async (req, res) => {
   try {
-    const { email, password, name, phoneNumber, address, location, ...nurseData } = req.body;
+    const { email, password, name, phoneNumber, address, location, commissionRate, ...nurseData } = req.body;
 
-    // 1. إنشاء حساب المستخدم أولاً ليتمكن الممرض من تسجيل الدخول
+    if (commissionRate === undefined) {
+      return res.status(400).json({ success: false, message: 'نسبة العمولة (commissionRate) مطلوبة' });
+    }
+
     const user = await User.create({
       role: 'Nurse',
       name,
@@ -361,12 +377,12 @@ const createNurse = asyncHandler(async (req, res) => {
       createdByAdminID: req.user.id || req.user._id
     });
 
-    // 2. إنشاء سجل الممرض وربطه بالـ userId الخاص بحسابه الجديد
     const nurse = await Nurse.create({
       ...nurseData,
       name,
       phoneNumber,
       location,
+      commissionRate, // حفظ النسبة المدخلة
       userId: user._id,
       addedBy: req.user.id || req.user._id
     });
@@ -377,7 +393,7 @@ const createNurse = asyncHandler(async (req, res) => {
       action: 'CREATE_NURSE', 
       entityId: nurse._id, 
       entityType: 'Nurse', 
-      meta: { name } 
+      meta: { name, commissionRate } 
     });
 
     return res.status(201).json({ success: true, data: { nurse, user: { email: user.email, role: user.role } } });
@@ -391,18 +407,18 @@ const createNurse = asyncHandler(async (req, res) => {
     throw error;
   }
 });
+
 // إنشاء حساب Staff أو Admin جديد
 const createStaffOrAdmin = asyncHandler(async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // إنشاء الحساب في جدول المستخدمين
     const user = await User.create({
       role,
       name,
       email,
-      passwordHash: password, // سيتم تشفيرها تلقائياً بواسطة الـ Model Middleware إن وجد أو حفظها حسب إعداداتك
-      phoneNumber: '01000000000', // قيمة افتراضية إذا كانت مطلوبة في Schema ولا يريدها المستخدم
+      passwordHash: password,
+      phoneNumber: '01000000000',
       address: 'الإدارة',
       accountStatus: 'active',
       vettingStatus: 'approved',
@@ -442,5 +458,5 @@ module.exports = {
   getProviderFinancialSummary, updateBookingByAdmin, providerAvailability, 
   doctorsStatus, analytics, toggleProviderStatus, createDoctor, updateDoctor, 
   listNursingServices, createNursingService, updateNursingService, 
-  listAuditLogsHandler, createNurse , createStaffOrAdmin
+  listAuditLogsHandler, createNurse, createStaffOrAdmin
 };

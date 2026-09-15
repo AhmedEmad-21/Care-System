@@ -1,7 +1,7 @@
 module.exports = {
   type: 'object',
   additionalProperties: false,
-  required: ['name', 'email', 'password', 'phoneNumber', 'address', 'location', 'basePrice', 'specialization'],
+  required: ['name', 'email', 'password', 'phoneNumber', 'address', 'location', 'basePrice', 'specialization', 'commissionRate'],
   properties: {
     name: { type: 'string', minLength: 1 },
     email: { type: 'string', format: 'email' },
@@ -22,6 +22,7 @@ module.exports = {
       ] 
     },
     basePrice: { type: 'number', minimum: 0 },
+    commissionRate: { type: 'number', minimum: 0, maximum: 100 }, // [جديد] نسبة العمولة
     profileImage: { type: 'string', minLength: 1 },
     location: {
       type: 'object',
