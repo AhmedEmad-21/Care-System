@@ -627,6 +627,38 @@ Authorization: Bearer <accessToken>
 
 ## 5. إدارة حسابات الإدارة والاستاف (Staff & Admin Accounts)
 
+### 5.0 عرض قائمة حسابات الـ Staff (List Staff Accounts)
+* **Method & Path:** `GET /api/staff/accounts`
+* **Auth:** Required (`Staff` or `Admin`)
+* **Query Params:**
+  * `role` *(optional)*: الافتراضي `Staff`. يقبل `Staff` أو `Admin` أو `all`.
+  * `query` *(optional)*: البحث بالاسم، الإيميل، أو الهاتف.
+  * `accountStatus` *(optional)*: `active` | `suspended`.
+  * `limit` *(optional)*: أقصى عدد نتائج (الافتراضي: 50).
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "count": 1,
+  "data": [
+    {
+      "_id": "64a999887766554433221100",
+      "name": "محمود الإداري",
+      "email": "staff.mahmoud@clinic.com",
+      "phoneNumber": "01099887766",
+      "role": "Staff",
+      "accountStatus": "active",
+      "vettingStatus": "approved",
+      "address": "الإدارة",
+      "createdAt": "2026-07-24T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
 ### 5.1 إنشاء حساب Staff أو Admin جديد
 * **Method & Path:** `POST /api/staff/accounts`
 * **Auth:** Required (`Admin` Only)

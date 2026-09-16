@@ -723,6 +723,51 @@ const listNursesForStaff = asyncHandler(async (req, res) => {
   });
 });
 
+// 14. استرجاع قائمة حسابات الـ Staff (ويمكن فلترة أو شمل Admin)
+const listStaffAccounts = asyncHandler(async (req, res) => {
+  const { role, query, search, accountStatus, limit } = req.query;
+  const searchTerm = (query || search || '').trim();
+
+  let filter = {};
+
+  // الفلترة بالـ role: الافتراضي 'Staff'، مع إمكانية تحديد 'Admin' أو 'all'
+  if (role) {
+    if (role.toLowerCase() === 'all') {
+      filter.role = { $in: ['Staff', 'Admin'] };
+    } else {
+      filter.role = role;
+    }
+  } else {
+    filter.role = 'Staff';
+  }
+
+  if (accountStatus) {
+    filter.accountStatus = accountStatus;
+  }
+
+  if (searchTerm) {
+    filter.$or = [
+      { name: { $regex: searchTerm, $options: 'i' } },
+      { email: { $regex: searchTerm, $options: 'i' } },
+      { phoneNumber: { $regex: searchTerm, $options: 'i' } },
+    ];
+  }
+
+  const maxLimit = Math.min(Number(limit) || 50, 100);
+  const accounts = await User.find(filter)
+    .select('-passwordHash -resetPasswordTokenHash')
+    .populate('createdByAdminID', 'name email')
+    .sort({ createdAt: -1 })
+    .limit(maxLimit)
+    .lean();
+
+  return res.json({
+    success: true,
+    count: accounts.length,
+    data: accounts,
+  });
+});
+
 module.exports = {
   listAllBookings, cancelBookingHandler, cancelBookingByNumberHandler,
   getCompletedBookingsForSettlement, settleBookings, getBookingDetails,
@@ -730,5 +775,6 @@ module.exports = {
   doctorsStatus, nursesStatus, analytics, toggleProviderStatus, createDoctor, updateDoctor, updateNurse, createNurse,
   listNursingServices, createNursingService, updateNursingService,
   listAuditLogsHandler, createStaffOrAdmin,
-  searchUsersForStaff, listDoctorsForStaff, listNursesForStaff
+  searchUsersForStaff, listDoctorsForStaff, listNursesForStaff,
+  listStaffAccounts
 };

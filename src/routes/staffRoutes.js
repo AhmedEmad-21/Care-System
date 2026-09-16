@@ -55,7 +55,8 @@ router.post('/nursing-services', authMW, checkRoleMW('STAFF', 'ADMIN'), validate
 router.patch('/nursing-services/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(nursingServiceSchema), staffController.updateNursingService);
 router.get('/audit-logs', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.listAuditLogsHandler);
 
-// مسار إنشاء حساب Staff أو Admin جديد
+// مسارات حسابات الإدارة والاستاف
+router.get('/accounts', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.listStaffAccounts);
 router.post('/accounts', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(staffAccountSchema), staffController.createStaffOrAdmin);
 
 module.exports = router;
