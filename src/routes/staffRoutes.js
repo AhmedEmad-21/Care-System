@@ -29,6 +29,7 @@ router.patch('/bookings/:id/edit', authMW, checkRoleMW('STAFF', 'ADMIN'), staffC
 // مسارات الحسابات والتسوية الأسبوعية
 router.get('/settlements', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getCompletedBookingsForSettlement);
 router.patch('/settlements/pay', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.settleBookings);
+router.patch('/settlements/settle', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.settleBookings);
 
 // الملخص المالي لمزود الخدمة
 router.get('/providers/:id/financial-summary', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getProviderFinancialSummary);

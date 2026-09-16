@@ -82,32 +82,53 @@ const getCompletedBookingsForSettlement = asyncHandler(async (req, res) => {
   const { startDate, endDate, providerId, isSettled } = req.query;
 
   let query = { status: 'completed' };
+  let nursingQuery = { status: 'completed' };
 
   if (isSettled !== undefined) {
-    query.isSettled = isSettled === 'true';
+    const isSettledBool = isSettled === 'true';
+    query.isSettled = isSettledBool;
+    nursingQuery.isSettled = isSettledBool;
   }
 
   if (startDate && endDate) {
-    query.updatedAt = {
+    const dateFilter = {
       $gte: new Date(startDate),
       $lte: new Date(endDate),
     };
+    query.updatedAt = dateFilter;
+    nursingQuery.updatedAt = dateFilter;
   }
 
   if (providerId) {
     query.$or = [{ doctorId: providerId }, { nurseId: providerId }];
+    nursingQuery.nurseId = providerId;
   }
 
-  const bookings = await Booking.find(query)
-    .populate('patientId', 'name phoneNumber')
-    .populate('doctorId', 'name specialization commissionRate basePrice urgentPrice')
-    .populate('nurseId', 'name commissionRate')
-    .sort({ updatedAt: -1 });
+  const [bookings, nursingBookings] = await Promise.all([
+    Booking.find(query)
+      .populate('patientId', 'name phoneNumber')
+      .populate('doctorId', 'name specialization commissionRate basePrice urgentPrice')
+      .populate('nurseId', 'name commissionRate')
+      .sort({ updatedAt: -1 })
+      .lean(),
+    NursingBooking.find(nursingQuery)
+      .populate('patientId', 'name phoneNumber')
+      .populate('nurseId', 'name commissionRate')
+      .populate('serviceId', 'name basePrice')
+      .sort({ updatedAt: -1 })
+      .lean(),
+  ]);
+
+  const allBookings = [...bookings, ...nursingBookings].sort(
+    (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
+  );
 
   let totalRevenue = 0;
   let totalCommission = 0;
+  let settledCommission = 0;
+  let pendingCommission = 0;
 
-  const formattedBookings = bookings.map(b => {
+  const formattedBookings = allBookings.map(b => {
     const cost = b.totalCost || 0;
     const provider = b.doctorId || b.nurseId;
     const rate = provider?.commissionRate || 10;
@@ -116,22 +137,36 @@ const getCompletedBookingsForSettlement = asyncHandler(async (req, res) => {
     totalRevenue += cost;
     totalCommission += commission;
 
+    if (b.isSettled) {
+      settledCommission += commission;
+    } else {
+      pendingCommission += commission;
+    }
+
     return {
-      ...b.toObject(),
+      ...b,
       calculatedCommission: commission,
-      appliedCommissionRate: rate
+      appliedCommissionRate: rate,
+      providerEarnings: cost - commission
     };
   });
 
   return res.json({
     success: true,
     count: formattedBookings.length,
-    summary: { totalRevenue, totalCommission },
+    summary: {
+      totalRevenue,
+      totalCommission,
+      settledCommission,
+      pendingCommission,
+      settledAmount: settledCommission,
+      pendingSettlementAmount: pendingCommission
+    },
     data: formattedBookings,
   });
 });
 
-// 5. تنفيذ التسوية الأسبوعية (فردي أو جماعي Bulk)
+// 5. تنفيذ التسوية الأسبوعية (تحصيل نسبة المنصة من المزود)
 const settleBookings = asyncHandler(async (req, res) => {
   const { bookingIds } = req.body;
 
@@ -139,15 +174,23 @@ const settleBookings = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'يرجى تحديد حجز واحد على الأقل للتسوية' });
   }
 
-  const result = await Booking.updateMany(
-    { _id: { $in: bookingIds }, status: 'completed', isSettled: false },
-    { $set: { isSettled: true, settledAt: new Date() } }
-  );
+  const [resultBookings, resultNursing] = await Promise.all([
+    Booking.updateMany(
+      { _id: { $in: bookingIds }, status: 'completed', isSettled: false },
+      { $set: { isSettled: true, settledAt: new Date() } }
+    ),
+    NursingBooking.updateMany(
+      { _id: { $in: bookingIds }, status: 'completed', isSettled: false },
+      { $set: { isSettled: true, settledAt: new Date() } }
+    ),
+  ]);
+
+  const modifiedCount = (resultBookings.modifiedCount || 0) + (resultNursing.modifiedCount || 0);
 
   return res.json({
     success: true,
-    message: `تم تسوية ${result.modifiedCount} حجز بنجاح`,
-    modifiedCount: result.modifiedCount,
+    message: `تم تسوية وتحصيل نسبة المنصة لـ ${modifiedCount} حجز بنجاح`,
+    modifiedCount,
   });
 });
 
@@ -166,8 +209,7 @@ const getBookingDetails = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: booking });
 });
 
-// 7. جلب الملخص المالي لمزود الخدمة
-// 7. جلب الملخص المالي لمزود الخدمة (مُحدث ليشمل أرباح وعمولة المنصة)
+// 7. جلب الملخص المالي لمزود الخدمة (مُحدث لحساب نسبة وعمولة المنصة والتسويات بدقة)
 const getProviderFinancialSummary = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -178,18 +220,24 @@ const getProviderFinancialSummary = asyncHandler(async (req, res) => {
 
   const rate = provider.commissionRate ?? 10;
 
-  const bookings = await Booking.find({
-    $or: [{ doctorId: id }, { nurseId: id }],
-    status: 'completed'
-  });
+  const [doctorBookings, nursingBookings] = await Promise.all([
+    Booking.find({
+      $or: [{ doctorId: id }, { nurseId: id }],
+      status: 'completed'
+    }).lean(),
+    NursingBooking.find({
+      nurseId: id,
+      status: 'completed'
+    }).lean()
+  ]);
+
+  const bookings = [...doctorBookings, ...nursingBookings];
 
   let totalRevenue = 0;
   let totalPlatformCommission = 0;
   let settledPlatformCommission = 0;
   let pendingPlatformCommission = 0;
-  let totalEarnings = 0;
-  let settledAmount = 0;
-  let pendingSettlementAmount = 0;
+  let totalProviderEarnings = 0;
 
   bookings.forEach((b) => {
     const cost = b.totalCost || 0;
@@ -198,13 +246,11 @@ const getProviderFinancialSummary = asyncHandler(async (req, res) => {
 
     totalRevenue += cost;
     totalPlatformCommission += platformShare;
-    totalEarnings += providerShare;
+    totalProviderEarnings += providerShare;
 
     if (b.isSettled) {
-      settledAmount += providerShare;
       settledPlatformCommission += platformShare;
     } else {
-      pendingSettlementAmount += providerShare;
       pendingPlatformCommission += platformShare;
     }
   });
@@ -220,9 +266,10 @@ const getProviderFinancialSummary = asyncHandler(async (req, res) => {
       totalPlatformCommission,
       settledPlatformCommission,
       pendingPlatformCommission,
-      totalEarnings,
-      settledAmount,
-      pendingSettlementAmount
+      totalEarnings: totalPlatformCommission,
+      settledAmount: settledPlatformCommission,
+      pendingSettlementAmount: pendingPlatformCommission,
+      providerEarnings: totalProviderEarnings
     }
   });
 });

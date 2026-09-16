@@ -395,6 +395,7 @@ Path: [src/config/firebase.js](src/config/firebase.js)
 
 - This is useful for administrative or segmented messaging.
 - The notification center still reads the same records from `GET /api/notifications`.
+- **Admin/Dashboard Note:** To retrieve the `userIds` easily without manual typing, use `GET /api/staff/users/search?query=...` to search patients and users by name, email, or phone number.
 
 ---
 

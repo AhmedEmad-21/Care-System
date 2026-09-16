@@ -57,6 +57,16 @@ const nursingBookingSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // الحقول المالية والتسوية الأسبوعية
+    isSettled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    settledAt: {
+      type: Date,
+      default: null,
+    },
     staffNote: {
       type: String,
       default: null,

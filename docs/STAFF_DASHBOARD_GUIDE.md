@@ -11,7 +11,7 @@
 1. [قواعد عامة والتوثيق (General Conventions)](#1-قواعد-عامة-والتوثيق-general-conventions)
 2. [إدارة ومتابعة الحجوزات (Bookings Management)](#2-إدارة-ومتابعة-الحجوزات-bookings-management)
 3. [التسويات المالية والحجوزات المكتملة (Settlements & Financials)](#3-التسويات-المالية-والحجوزات-المكتملة-settlements--financials)
-4. [إدارة مزودي الخدمة — الأطباء والممرضين (Providers Management)](#4-إدارة-مزودي-الخدمة--الأطباء-والممرضين-providers-management)
+4. [إدارة مزودي الخدمة والمستخدمين (Providers & Users Management)](#4-إدارة-مزودي-الخدمة-والمستخدمين-providers--users-management)
 5. [إدارة حسابات الإدارة والاستاف (Staff & Admin Accounts)](#5-إدارة-حسابات-الإدارة-والاستاف-staff--admin-accounts)
 6. [إدارة الخدمات التمريضية (Nursing Services)](#6-إدارة-الخدمات-التمريضية-nursing-services)
 7. [التحليلات وسجلات المراقبة (Analytics & Audit Logs)](#7-التحليلات-وسجلات-المراقبة-analytics--audit-logs)
@@ -234,7 +234,11 @@ Authorization: Bearer <accessToken>
   "count": 2,
   "summary": {
     "totalRevenue": 1000,
-    "totalCommission": 150
+    "totalCommission": 150,
+    "settledCommission": 75,
+    "pendingCommission": 75,
+    "settledAmount": 75,
+    "pendingSettlementAmount": 75
   },
   "data": [
     {
@@ -245,6 +249,7 @@ Authorization: Bearer <accessToken>
       "isSettled": false,
       "calculatedCommission": 75,
       "appliedCommissionRate": 15,
+      "providerEarnings": 425,
       "doctorId": {
         "_id": "64a1b2c3d4e5f6789012345b",
         "name": "د. سارة علي",
@@ -257,9 +262,10 @@ Authorization: Bearer <accessToken>
 
 ---
 
-### 3.2 تنفيذ التسوية الأسبوعية (صرف المستحقات)
-* **Method & Path:** `PATCH /api/staff/settlements/pay`
+### 3.2 تنفيذ التسوية الأسبوعية (تحصيل نسبة المنصة من المزود)
+* **Method & Path:** `PATCH /api/staff/settlements/settle` (أو `PATCH /api/staff/settlements/pay`)
 * **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** عند الضغط على تسوية الحجوزات، يعني ذلك أن إدارة المنصة قامت بتحصيل عمولتها المستحقة من الطبيب/الممرض وتمت تسوية الحساب. يُحدّث كل من حجوزات الأطباء والتمريض المنزلي.
 
 #### 📥 Request Body Example:
 ```json
@@ -275,7 +281,7 @@ Authorization: Bearer <accessToken>
 ```json
 {
   "success": true,
-  "message": "تم تسوية 2 حجز بنجاح",
+  "message": "تم تسوية وتحصيل نسبة المنصة لـ 2 حجز بنجاح",
   "modifiedCount": 2
 }
 ```
@@ -369,6 +375,20 @@ Authorization: Bearer <accessToken>
   ]
 }
 ```
+
+---
+
+### 4.0.3 عرض الحالة المباشرة لجميع الأطباء (Doctors Status)
+* **Method & Path:** `GET /api/staff/doctors/status`
+* **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** جلب قائمة بجميع الأطباء المسجلين وحالة توافرهم الحالية.
+
+---
+
+### 4.0.4 عرض الحالة المباشرة لجميع الممرضين (Nurses Status)
+* **Method & Path:** `GET /api/staff/nurses/status`
+* **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** جلب قائمة بجميع الممرضين المسجلين وحالة توافرهم الحالية.
 
 ---
 
@@ -539,6 +559,13 @@ Authorization: Bearer <accessToken>
 ### 4.5 عرض الملخص المالي التفصيلي لمزود الخدمة (Provider Financial Summary)
 * **Method & Path:** `GET /api/staff/providers/:id/financial-summary`
 * **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** يعرض هذا المسار ملخص الحسابات المالية للمزود من منظور إدارة المنصة؛ حيث يستلم المزود قيمة الكشف كاش من المريض، وتقوم المنصة بتحصيل عمولتها منه:
+  * `totalRevenue`: إجمالي المبالغ النقدية المحصلة من المرضى بواسطة المزود (مثلاً: 500 ج.م).
+  * `totalPlatformCommission`: إجمالي عمولة المنصة المستحقة على المزود (مثلاً 10% = 50 ج.م).
+  * `settledAmount` (أو `settledPlatformCommission`): عمولة المنصة التي تم تحصيلها وتسويتها بالفعل من الطبيب (50 ج.م).
+  * `pendingSettlementAmount` (أو `pendingPlatformCommission`): عمولة المنصة المعلقة المطلوب تحصيلها من الطبيب (0 ج.م).
+  * `totalEarnings`: إجمالي أرباح المنصة من هذا المزود (50 ج.م).
+  * `providerEarnings`: صافي ما يتبقى للطبيب بعد استقطاع عمولة المنصة (450 ج.م).
 
 #### 📤 Response Example (200 OK):
 ```json
@@ -553,9 +580,10 @@ Authorization: Bearer <accessToken>
     "totalPlatformCommission": 50,
     "settledPlatformCommission": 50,
     "pendingPlatformCommission": 0,
-    "totalEarnings": 450,
-    "settledAmount": 450,
-    "pendingSettlementAmount": 0
+    "totalEarnings": 50,
+    "settledAmount": 50,
+    "pendingSettlementAmount": 0,
+    "providerEarnings": 450
   }
 }
 ```

@@ -107,6 +107,12 @@ Authorization: Bearer <YOUR_TOKEN>
 
 عرض جميع الحجوزات المكتملة الخاصة بمزود الخدمة (سواء المسوية أو التي لم تسوّ بعد)، مع حساب نسبة المنصة وصافي أرباح المزود وتوفير ملخص مالي كامل.
 
+> 💡 **مفهوم التسوية لمزود الخدمة:**  
+> يستلم مزود الخدمة (الطبيب/الممرض) إجمالي قيمة الكشف نقدياً (Cash) من المريض، وتكون نسبة المنصة (`totalCommission`) مستحقة السداد للمنصة:  
+> * **`settledAmount` (أو `settledCommission`):** عمولة المنصة التي تم سدادها وتسويتها بالفعل مع المنصة.  
+> * **`pendingSettlementAmount` (أو `pendingCommission`):** عمولة المنصة المعلقة المطلوب سدادها للمنصة.  
+> * **`totalProviderEarnings`:** صافي دخل المزود بعد استقطاع عمولة المنصة.  
+
 * **Endpoint:** `GET /api/provider-dashboard/settlements`
 * **Query Parameters (اختيارية):**
   * `isSettled`: تصفية حسب التسوية (`true` للمسوية فقط، `false` للمستحقة فقط، أو إهمال الحقل لعرض الجميع).
@@ -130,6 +136,8 @@ Authorization: Bearer <YOUR_TOKEN>
     "totalCommission": 100,
     "settledCommission": 50,
     "pendingCommission": 50,
+    "settledAmount": 50,
+    "pendingSettlementAmount": 50,
     "totalProviderEarnings": 900,
     "settledProviderEarnings": 450,
     "pendingProviderEarnings": 450

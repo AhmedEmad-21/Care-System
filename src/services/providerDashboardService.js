@@ -171,6 +171,8 @@ const getProviderSettlements = async ({ userId, startDate, endDate, isSettled })
       totalCommission,
       settledCommission,
       pendingCommission,
+      settledAmount: settledCommission,
+      pendingSettlementAmount: pendingCommission,
       totalProviderEarnings,
       settledProviderEarnings,
       pendingProviderEarnings

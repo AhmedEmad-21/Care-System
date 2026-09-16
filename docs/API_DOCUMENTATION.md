@@ -1944,20 +1944,33 @@ Same fields as [§10.13 Create Nursing Service](#1013-create-nursing-service).
 | 25  | POST   | `/api/ai/match`                                | ✅   | Any         |
 | 26  | POST   | `/api/ai/suggest`                              | ✅   | Any         |
 | 27  | GET    | `/api/ai/alternatives`                         | ✅   | Any         |
-| 28  | GET    | `/api/staff/bookings/pending`                  | ✅   | Staff/Admin |
-| 29  | PATCH  | `/api/staff/bookings/:id/confirm`              | ✅   | Staff/Admin |
+| 28  | GET    | `/api/staff/bookings`                          | ✅   | Staff/Admin |
+| 29  | GET    | `/api/staff/bookings/:id`                      | ✅   | Staff/Admin |
 | 30  | PATCH  | `/api/staff/bookings/:id/cancel`               | ✅   | Staff/Admin |
-| 31  | GET    | `/api/staff/providers/availability`            | ✅   | Staff/Admin |
-| 32  | GET    | `/api/staff/doctors/status`                    | ✅   | Staff/Admin |
-| 33  | GET    | `/api/staff/analytics`                         | ✅   | Admin       |
-| 34  | PATCH  | `/api/staff/providers/:type/:id/toggle-status` | ✅   | Admin       |
-| 35  | POST   | `/api/staff/doctors`                           | ✅   | Staff/Admin |
-| 36  | PATCH  | `/api/staff/doctors/:id`                       | ✅   | Staff/Admin |
-| 37  | GET    | `/api/staff/nursing-services`                  | ✅   | Staff/Admin |
-| 38  | POST   | `/api/staff/nursing-services`                  | ✅   | Staff/Admin |
-| 39  | PATCH  | `/api/staff/nursing-services/:id`              | ✅   | Staff/Admin |
-| 40  | GET    | `/api/staff/audit-logs`                        | ✅   | Staff/Admin |
-| 41  | POST   | `/api/staff/nurses`                            | ✅   | Staff/Admin |
+| 31  | PATCH  | `/api/staff/bookings/cancel-by-number/:number` | ✅   | Staff/Admin |
+| 32  | PATCH  | `/api/staff/bookings/:id/edit`                 | ✅   | Admin       |
+| 33  | GET    | `/api/staff/settlements`                       | ✅   | Staff/Admin |
+| 34  | PATCH  | `/api/staff/settlements/settle`                | ✅   | Staff/Admin |
+| 35  | PATCH  | `/api/staff/settlements/pay`                   | ✅   | Staff/Admin |
+| 36  | GET    | `/api/staff/providers/:id/financial-summary`   | ✅   | Staff/Admin |
+| 37  | GET    | `/api/staff/users/search`                      | ✅   | Staff/Admin |
+| 38  | GET    | `/api/staff/providers/availability`            | ✅   | Staff/Admin |
+| 39  | GET    | `/api/staff/doctors`                           | ✅   | Staff/Admin |
+| 40  | POST   | `/api/staff/doctors`                           | ✅   | Staff/Admin |
+| 41  | PATCH  | `/api/staff/doctors/:id`                       | ✅   | Staff/Admin |
+| 42  | GET    | `/api/staff/doctors/status`                    | ✅   | Staff/Admin |
+| 43  | GET    | `/api/staff/nurses`                            | ✅   | Staff/Admin |
+| 44  | POST   | `/api/staff/nurses`                            | ✅   | Staff/Admin |
+| 45  | PATCH  | `/api/staff/nurses/:id`                        | ✅   | Staff/Admin |
+| 46  | GET    | `/api/staff/nurses/status`                     | ✅   | Staff/Admin |
+| 47  | GET    | `/api/staff/analytics`                         | ✅   | Admin       |
+| 48  | PATCH  | `/api/staff/providers/:type/:id/toggle-status` | ✅   | Admin       |
+| 49  | GET    | `/api/staff/nursing-services`                  | ✅   | Staff/Admin |
+| 50  | POST   | `/api/staff/nursing-services`                  | ✅   | Staff/Admin |
+| 51  | PATCH  | `/api/staff/nursing-services/:id`              | ✅   | Staff/Admin |
+| 52  | GET    | `/api/staff/audit-logs`                        | ✅   | Staff/Admin |
+| 53  | POST   | `/api/staff/accounts`                          | ✅   | Admin       |
+| 54  | GET    | `/api/provider-dashboard/settlements`          | ✅   | Doctor/Nurse|
 
 ---
 
