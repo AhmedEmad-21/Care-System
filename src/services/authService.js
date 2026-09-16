@@ -15,6 +15,7 @@ const { issueToken, verifyToken: verifyAccessToken, revokeToken } = require('./t
 const { resolveProfileImage } = require('../utils/profileImage');
 const { sendPasswordResetOtp } = require('./emailService');
 const { normalizeGeoPoint } = require('../utils/geoPoint');
+const { generateFirebaseCustomToken } = require('../config/firebase');
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
@@ -86,11 +87,16 @@ const attachProfile = async (userDoc) => {
   return user;
 };
 
-const generateTokens = (user) => {
+const generateTokens = async (user) => {
   const basePayload = { id: user._id, role: user.role, email: user.email };
+  const accessToken = issueToken({ ...basePayload, tokenType: 'access' }, { expiresIn: process.env.JWT_EXPIRES_IN || '1d' });
+  const refreshToken = issueToken({ ...basePayload, tokenType: 'refresh' }, { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '365d' });
+  const firebaseToken = await generateFirebaseCustomToken(user._id, { role: user.role, email: user.email });
+
   return {
-    accessToken: issueToken({ ...basePayload, tokenType: 'access' }, { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }),
-    refreshToken: issueToken({ ...basePayload, tokenType: 'refresh' }, { expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || '365d' })
+    accessToken,
+    refreshToken,
+    firebaseToken
   };
 };
 
@@ -102,7 +108,7 @@ const refreshAccessToken = async (oldRefreshToken) => {
     }
     const user = await User.findById(payload.id);
     if (!user) throw new NotFoundError('User not found');
-    return generateTokens(user);
+    return await generateTokens(user);
   } catch (error) {
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
@@ -380,7 +386,12 @@ module.exports = {
     if (!user || !(await user.comparePassword(password))) {
       throw new UnauthorizedError('بيانات الدخول غير صحيحة');
     }
-    return { user: await attachProfile(user), tokens: generateTokens(user) };
+    const tokens = await generateTokens(user);
+    return {
+      user: await attachProfile(user),
+      tokens,
+      firebaseToken: tokens.firebaseToken
+    };
   }, 
 
   getMe: async (id) => attachProfile(await User.findById(id)), 

@@ -41,8 +41,18 @@ app.disable("x-powered-by");
 if (config.appConfig.trustProxy) app.set("trust proxy", 1);
 
 // Middleware
-app.use(cors({ origin: true, credentials: true }));
-app.use(helmet());
+app.use(cors({
+  origin: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  credentials: true,
+  optionsSuccessStatus: 204
+}));
+app.options('*', cors());
+
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(express.json());
 app.use(inputSanitizerMW);
 app.use(hpp());

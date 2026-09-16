@@ -105,16 +105,19 @@ After login or register, the API returns:
 ```json
 {
   "accessToken": "<JWT>",
-  "refreshToken": "<JWT>"
+  "refreshToken": "<JWT>",
+  "firebaseToken": "<FirebaseCustomToken>"
 }
 ```
 
-| Token         | Default Expiry       | Usage                                     |
-| ------------- | -------------------- | ----------------------------------------- |
-| Access Token  | `15m` (configurable) | Send in `Authorization: Bearer` header    |
-| Refresh Token | `7d` (configurable)  | Send in body to `/api/auth/refresh-token` |
+| Token          | Default Expiry       | Usage                                                        |
+| -------------- | -------------------- | ------------------------------------------------------------ |
+| Access Token   | `15m` (configurable) | Send in `Authorization: Bearer` header                       |
+| Refresh Token  | `7d` (configurable)  | Send in body to `/api/auth/refresh-token`                    |
+| Firebase Token | `1h` (Firebase standard) | Use with Firebase Client SDK (`signInWithCustomToken`) |
 
-JWT payload contains: `{ id, role, email, tokenType }`
+JWT payload contains: `{ id, role, email, tokenType }`  
+Firebase Custom Token payload uses `uid = user._id`.
 
 ### 2.2 Roles
 
@@ -343,8 +346,10 @@ JWT payload contains: `{ id, role, email, tokenType }`
     },
     "tokens": {
       "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-      "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
-    }
+      "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
+      "firebaseToken": "eyJhbGciOiJSUzI1NiIs..."
+    },
+    "firebaseToken": "eyJhbGciOiJSUzI1NiIs..."
   }
 }
 ```
@@ -401,8 +406,10 @@ JWT payload contains: `{ id, role, email, tokenType }`
     },
     "tokens": {
       "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-      "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
-    }
+      "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
+      "firebaseToken": "eyJhbGciOiJSUzI1NiIs..."
+    },
+    "firebaseToken": "eyJhbGciOiJSUzI1NiIs..."
   }
 }
 ```

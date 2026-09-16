@@ -60,20 +60,22 @@ const changeBookingStatus = asyncHandler(async (req, res) => {
   });
 });
 
-// عرض التسويات المالية المدفوعة مع دعم الفلترة بالتاريخ
+// عرض التسويات المالية (الحجوزات المسوية والمستحقة) مع الفلترة بالتاريخ وحالة التسوية
 const listSettlements = asyncHandler(async (req, res) => {
-  const { startDate, endDate } = req.query;
+  const { startDate, endDate, isSettled } = req.query;
 
-  const settlements = await getProviderSettlements({
+  const result = await getProviderSettlements({
     userId: req.user._id,
     startDate,
-    endDate
+    endDate,
+    isSettled
   });
 
   return res.json({
     success: true,
-    count: settlements.length,
-    data: settlements
+    count: result.data.length,
+    summary: result.summary,
+    data: result.data
   });
 });
 

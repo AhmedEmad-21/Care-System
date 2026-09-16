@@ -89,15 +89,19 @@ const updateBookingStatusService = async ({ userId, bookingId, status }) => {
   return booking;
 };
 
-// 4. عرض التسويات المالية (الحجوزات المكتملة والتي تم تسويتها isSettled = true) مع الفلترة بالتاريخ
-const getProviderSettlements = async ({ userId, startDate, endDate }) => {
-  const { field } = await getProviderDetails(userId);
+// 4. عرض التسويات المالية (الحجوزات المكتملة المسوية والمستحقة) مع الفلترة بالتاريخ وحالة التسوية
+const getProviderSettlements = async ({ userId, startDate, endDate, isSettled }) => {
+  const { providerDoc, field } = await getProviderDetails(userId);
+  const commissionRate = providerDoc.commissionRate ?? 10;
 
   let query = {
-    [field]: { $exists: true },
-    status: BOOKING_STATUSES.COMPLETED,
-    isSettled: true
+    [field]: providerDoc._id,
+    status: BOOKING_STATUSES.COMPLETED
   };
+
+  if (isSettled !== undefined && isSettled !== '') {
+    query.isSettled = isSettled === 'true' || isSettled === true;
+  }
 
   if (startDate || endDate) {
     query.updatedAt = {};
@@ -113,10 +117,66 @@ const getProviderSettlements = async ({ userId, startDate, endDate }) => {
     }
   }
 
-  const bookings = await Booking.find(query).sort({ updatedAt: -1 }).lean();
-  const nursingBookings = await NursingBooking.find(query).sort({ updatedAt: -1 }).lean();
+  const bookings = await Booking.find(query)
+    .populate('patientId', 'name phoneNumber')
+    .sort({ updatedAt: -1 })
+    .lean();
 
-  return [...bookings, ...nursingBookings];
+  const nursingBookings = await NursingBooking.find(query)
+    .populate('patientId', 'name phoneNumber')
+    .populate('serviceId', 'name basePrice')
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const allBookings = [...bookings, ...nursingBookings].sort(
+    (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+  );
+
+  let totalRevenue = 0;
+  let totalCommission = 0;
+  let settledCommission = 0;
+  let pendingCommission = 0;
+  let totalProviderEarnings = 0;
+  let settledProviderEarnings = 0;
+  let pendingProviderEarnings = 0;
+
+  const formattedBookings = allBookings.map((b) => {
+    const cost = b.totalCost || 0;
+    const commission = (cost * commissionRate) / 100;
+    const providerEarnings = cost - commission;
+
+    totalRevenue += cost;
+    totalCommission += commission;
+    totalProviderEarnings += providerEarnings;
+
+    if (b.isSettled) {
+      settledCommission += commission;
+      settledProviderEarnings += providerEarnings;
+    } else {
+      pendingCommission += commission;
+      pendingProviderEarnings += providerEarnings;
+    }
+
+    return {
+      ...b,
+      appliedCommissionRate: commissionRate,
+      calculatedCommission: commission,
+      providerEarnings
+    };
+  });
+
+  return {
+    summary: {
+      totalRevenue,
+      totalCommission,
+      settledCommission,
+      pendingCommission,
+      totalProviderEarnings,
+      settledProviderEarnings,
+      pendingProviderEarnings
+    },
+    data: formattedBookings
+  };
 };
 
 // 5. تعديل أيام الإجازة
