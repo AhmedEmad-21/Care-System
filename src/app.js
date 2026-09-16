@@ -133,13 +133,12 @@ if (require.main === module) {
 const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000; // 10 دقائق
 
 setInterval(() => {
-  const isDev = !config.isProduction;
-  const serverUrl = (isDev ? null : process.env.EXTERNAL_URL) || `http://localhost:${config.port}`;
+  const serverUrl = process.env.EXTERNAL_URL || `http://localhost:${config.port}`;
   
   const client = serverUrl.startsWith('https') ? require('https') : http;
   
   client.get(serverUrl, (res) => {
-    console.log(`💡 [Keep-Alive] Self-ping status: ${res.statusCode}`);
+    console.log(`💡 [Keep-Alive] Self-ping (${serverUrl}) status: ${res.statusCode}`);
   }).on('error', (err) => {
     console.error(`⚠️ [Keep-Alive] Ping error: ${err.message}`);
   });
