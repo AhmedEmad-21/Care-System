@@ -48,7 +48,6 @@ app.use(cors({
   credentials: true,
   optionsSuccessStatus: 204
 }));
-app.options('*', cors());
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
