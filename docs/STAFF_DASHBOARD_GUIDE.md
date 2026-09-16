@@ -282,7 +282,95 @@ Authorization: Bearer <accessToken>
 
 ---
 
-## 4. إدارة مزودي الخدمة — الأطباء والممرضين (Providers Management)
+## 4. إدارة مزودي الخدمة والمستخدمين (Providers & Users Management)
+
+### 4.0 البحث عن المستخدمين/المرضى للإشعارات الموجهة (Search Users API)
+* **Method & Path:** `GET /api/staff/users/search`
+* **Auth:** Required (`Staff` or `Admin`)
+* **Query Params:**
+  * `query` *(optional)*: البحث بالاسم أو البريد الإلكتروني أو رقم الهاتف
+  * `role` *(optional)*: فلترة حسب نوع الحساب (`Patient`, `Doctor`, `Nurse`, `Staff`, `Admin`)
+  * `limit` *(optional)*: أقصى عدد نتائج (الافتراضي: 30)
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "count": 2,
+  "data": [
+    {
+      "_id": "64a1b2c3d4e5f6789012345a",
+      "name": "أحمد محمد",
+      "email": "ahmed@example.com",
+      "role": "Patient",
+      "phoneNumber": "01012345678",
+      "profileImage": null
+    }
+  ]
+}
+```
+
+---
+
+### 4.0.1 عرض قائمة الأطباء لوحة التحكم (Staff Doctors List)
+* **Method & Path:** `GET /api/staff/doctors`
+* **Auth:** Required (`Staff` or `Admin`)
+* **Query Params:**
+  * `query` *(optional)*: البحث بالاسم، التخصص، أو الهاتف
+  * `isAvailable` *(optional)*: `true` | `false`
+  * `specialization` *(optional)*: التخصص
+  * `limit` *(optional)*: الافتراضي 50
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "count": 1,
+  "data": [
+    {
+      "_id": "64a7b2c1f1a2b3c4d5e6f7a1",
+      "name": "د. أحمد محمود",
+      "specialization": "باطنة",
+      "phoneNumber": "01012345678",
+      "basePrice": 300,
+      "urgentPrice": 450,
+      "commissionRate": 12,
+      "isAvailable": true,
+      "rating": 4.8
+    }
+  ]
+}
+```
+
+---
+
+### 4.0.2 عرض قائمة الممرضين لوحة التحكم (Staff Nurses List)
+* **Method & Path:** `GET /api/staff/nurses`
+* **Auth:** Required (`Staff` or `Admin`)
+* **Query Params:**
+  * `query` *(optional)*: البحث بالاسم أو الهاتف
+  * `isAvailable` *(optional)*: `true` | `false`
+  * `limit` *(optional)*: الافتراضي 50
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "count": 1,
+  "data": [
+    {
+      "_id": "64a7b2c1f1a2b3c4d5e6f7a9",
+      "name": "م. كريم سعيد",
+      "phoneNumber": "01198765432",
+      "commissionRate": 10,
+      "isAvailable": true,
+      "rating": 4.9
+    }
+  ]
+}
+```
+
+---
 
 ### 4.1 إضافة طبيب جديد (Create Doctor)
 * **Method & Path:** `POST /api/staff/doctors`

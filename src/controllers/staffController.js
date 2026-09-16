@@ -580,11 +580,108 @@ const createStaffOrAdmin = asyncHandler(async (req, res) => {
   }
 });
 
+// 11. البحث عن المستخدمين/المرضى للإشعارات الموجهة أو القوائم المنسدلة
+const searchUsersForStaff = asyncHandler(async (req, res) => {
+  const { query, search, role, limit } = req.query;
+  const searchTerm = (query || search || '').trim();
+
+  let filter = {};
+  if (role) {
+    filter.role = role;
+  }
+
+  if (searchTerm) {
+    filter.$or = [
+      { name: { $regex: searchTerm, $options: 'i' } },
+      { email: { $regex: searchTerm, $options: 'i' } },
+      { phoneNumber: { $regex: searchTerm, $options: 'i' } },
+    ];
+  }
+
+  const maxLimit = Math.min(Number(limit) || 30, 100);
+  const users = await User.find(filter)
+    .select('_id name email role phoneNumber profileImage')
+    .sort({ createdAt: -1 })
+    .limit(maxLimit)
+    .lean();
+
+  return res.json({
+    success: true,
+    count: users.length,
+    data: users,
+  });
+});
+
+// 12. استرجاع قائمة الأطباء المخصصة للوحة تحكم الـ Staff
+const listDoctorsForStaff = asyncHandler(async (req, res) => {
+  const { query, search, isAvailable, specialization, limit } = req.query;
+  const searchTerm = (query || search || '').trim();
+
+  let filter = {};
+  if (isAvailable !== undefined) {
+    filter.isAvailable = isAvailable === 'true';
+  }
+  if (specialization) {
+    filter.specialization = { $regex: specialization, $options: 'i' };
+  }
+  if (searchTerm) {
+    filter.$or = [
+      { name: { $regex: searchTerm, $options: 'i' } },
+      { specialization: { $regex: searchTerm, $options: 'i' } },
+      { phoneNumber: { $regex: searchTerm, $options: 'i' } },
+    ];
+  }
+
+  const maxLimit = Math.min(Number(limit) || 50, 100);
+  const doctors = await Doctor.find(filter)
+    .populate('userId', 'email role accountStatus')
+    .sort({ createdAt: -1 })
+    .limit(maxLimit)
+    .lean();
+
+  return res.json({
+    success: true,
+    count: doctors.length,
+    data: doctors,
+  });
+});
+
+// 13. استرجاع قائمة الممرضين المخصصة للوحة تحكم الـ Staff
+const listNursesForStaff = asyncHandler(async (req, res) => {
+  const { query, search, isAvailable, limit } = req.query;
+  const searchTerm = (query || search || '').trim();
+
+  let filter = {};
+  if (isAvailable !== undefined) {
+    filter.isAvailable = isAvailable === 'true';
+  }
+  if (searchTerm) {
+    filter.$or = [
+      { name: { $regex: searchTerm, $options: 'i' } },
+      { phoneNumber: { $regex: searchTerm, $options: 'i' } },
+    ];
+  }
+
+  const maxLimit = Math.min(Number(limit) || 50, 100);
+  const nurses = await Nurse.find(filter)
+    .populate('userId', 'email role accountStatus')
+    .sort({ createdAt: -1 })
+    .limit(maxLimit)
+    .lean();
+
+  return res.json({
+    success: true,
+    count: nurses.length,
+    data: nurses,
+  });
+});
+
 module.exports = {
   listAllBookings, cancelBookingHandler, cancelBookingByNumberHandler,
   getCompletedBookingsForSettlement, settleBookings, getBookingDetails,
   getProviderFinancialSummary, updateBookingByAdmin, providerAvailability,
-  doctorsStatus, nursesStatus, analytics, toggleProviderStatus, createDoctor, updateDoctor, updateNurse,
+  doctorsStatus, nursesStatus, analytics, toggleProviderStatus, createDoctor, updateDoctor, updateNurse, createNurse,
   listNursingServices, createNursingService, updateNursingService,
-  listAuditLogsHandler, createNurse, createStaffOrAdmin
+  listAuditLogsHandler, createStaffOrAdmin,
+  searchUsersForStaff, listDoctorsForStaff, listNursesForStaff
 };

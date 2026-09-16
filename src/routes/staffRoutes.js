@@ -33,14 +33,19 @@ router.patch('/settlements/pay', authMW, checkRoleMW('STAFF', 'ADMIN'), staffCon
 // الملخص المالي لمزود الخدمة
 router.get('/providers/:id/financial-summary', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getProviderFinancialSummary);
 
+router.get('/users/search', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.searchUsersForStaff);
+
 router.get('/providers/availability', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.providerAvailability);
 router.get('/doctors/status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.doctorsStatus);
+router.get('/nurses/status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.nursesStatus);
 router.get('/analytics', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.analytics);
 router.patch('/providers/:type/:id/toggle-status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.toggleProviderStatus);
 
-// مسارات إنشاء وتعديل الأطباء والممرضين والخدمات
+// مسارات استرجاع وإنشاء وتعديل الأطباء والممرضين والخدمات
+router.get('/doctors', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.listDoctorsForStaff);
 router.post('/doctors', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(doctorCreateSchema), staffController.createDoctor);
 router.patch('/doctors/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(doctorUpdateSchema), staffController.updateDoctor);
+router.get('/nurses', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.listNursesForStaff);
 router.post('/nurses', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(require('../utils/staffNurseCreateValidate')), staffController.createNurse);
 router.patch('/nurses/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(nurseUpdateSchema), staffController.updateNurse);
 
