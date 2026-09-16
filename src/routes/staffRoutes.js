@@ -4,8 +4,9 @@ const checkRoleMW = require('../middlewares/checkRoleMW');
 const validateAjvMW = require('../middlewares/validateAjvMW');
 const doctorCreateSchema = require('../utils/staffDoctorCreateValidate');
 const doctorUpdateSchema = require('../utils/staffDoctorUpdateValidate');
+const nurseUpdateSchema = require('../utils/staffNurseUpdateValidate');
 const nursingServiceSchema = require('../utils/staffNursingServiceValidate');
-const staffAccountSchema = require('../utils/staffAccountCreateValidate'); // ملف الـ Validation الجديد لحسابات الاستاف/الأدمن
+const staffAccountSchema = require('../utils/staffAccountCreateValidate');
 const staffController = require('../controllers/staffController');
 
 const router = express.Router();
@@ -34,17 +35,19 @@ router.get('/providers/:id/financial-summary', authMW, checkRoleMW('STAFF', 'ADM
 
 router.get('/providers/availability', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.providerAvailability);
 router.get('/doctors/status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.doctorsStatus);
-router.get('/analytics', authMW, checkRoleMW('STAFF','ADMIN'), staffController.analytics);
-router.patch('/providers/:type/:id/toggle-status', authMW, checkRoleMW('ADMIN'), staffController.toggleProviderStatus);
+router.get('/analytics', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.analytics);
+router.patch('/providers/:type/:id/toggle-status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.toggleProviderStatus);
 
 // مسارات إنشاء وتعديل الأطباء والممرضين والخدمات
 router.post('/doctors', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(doctorCreateSchema), staffController.createDoctor);
 router.patch('/doctors/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(doctorUpdateSchema), staffController.updateDoctor);
+router.post('/nurses', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(require('../utils/staffNurseCreateValidate')), staffController.createNurse);
+router.patch('/nurses/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(nurseUpdateSchema), staffController.updateNurse);
+
 router.get('/nursing-services', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.listNursingServices);
 router.post('/nursing-services', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(nursingServiceSchema), staffController.createNursingService);
 router.patch('/nursing-services/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(nursingServiceSchema), staffController.updateNursingService);
 router.get('/audit-logs', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.listAuditLogsHandler);
-router.post('/nurses', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(require('../utils/staffNurseCreateValidate')), staffController.createNurse);
 
 // مسار إنشاء حساب Staff أو Admin جديد
 router.post('/accounts', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(staffAccountSchema), staffController.createStaffOrAdmin);

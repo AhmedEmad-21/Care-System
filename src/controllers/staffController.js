@@ -167,34 +167,45 @@ const getBookingDetails = asyncHandler(async (req, res) => {
 });
 
 // 7. جلب الملخص المالي لمزود الخدمة
+// 7. جلب الملخص المالي لمزود الخدمة (مُحدث ليشمل أرباح وعمولة المنصة)
 const getProviderFinancialSummary = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  
-  const provider = await Doctor.findById(id) || await Nurse.findById(id);
+
+  const provider = (await Doctor.findById(id)) || (await Nurse.findById(id));
   if (!provider) {
     return res.status(404).json({ success: false, message: 'مزود الخدمة غير موجود' });
   }
 
   const rate = provider.commissionRate ?? 10;
 
-  const bookings = await Booking.find({ 
+  const bookings = await Booking.find({
     $or: [{ doctorId: id }, { nurseId: id }],
     status: 'completed'
   });
 
+  let totalRevenue = 0;
+  let totalPlatformCommission = 0;
+  let settledPlatformCommission = 0;
+  let pendingPlatformCommission = 0;
   let totalEarnings = 0;
   let settledAmount = 0;
   let pendingSettlementAmount = 0;
 
-  bookings.forEach(b => {
+  bookings.forEach((b) => {
     const cost = b.totalCost || 0;
-    const providerShare = cost - (cost * rate) / 100;
+    const platformShare = (cost * rate) / 100;
+    const providerShare = cost - platformShare;
 
+    totalRevenue += cost;
+    totalPlatformCommission += platformShare;
     totalEarnings += providerShare;
+
     if (b.isSettled) {
       settledAmount += providerShare;
+      settledPlatformCommission += platformShare;
     } else {
       pendingSettlementAmount += providerShare;
+      pendingPlatformCommission += platformShare;
     }
   });
 
@@ -202,8 +213,13 @@ const getProviderFinancialSummary = asyncHandler(async (req, res) => {
     success: true,
     data: {
       providerId: id,
+      providerName: provider.name,
       commissionRate: rate,
       totalCompletedBookings: bookings.length,
+      totalRevenue,
+      totalPlatformCommission,
+      settledPlatformCommission,
+      pendingPlatformCommission,
       totalEarnings,
       settledAmount,
       pendingSettlementAmount
@@ -221,13 +237,13 @@ const updateBookingByAdmin = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'الحجز غير موجود' });
   }
 
-  await logAuditEvent({ 
-    actorId: req.user.id || req.user._id, 
-    actorRole: 'Admin', 
-    action: 'ADMIN_UPDATE_BOOKING', 
-    entityId: booking._id, 
+  await logAuditEvent({
+    actorId: req.user.id || req.user._id,
+    actorRole: 'Admin',
+    action: 'ADMIN_UPDATE_BOOKING',
+    entityId: booking._id,
     entityType: 'Booking',
-    meta: { updates } 
+    meta: { updates }
   });
 
   return res.json({ success: true, message: 'تم تحديث بيانات الحجز بنجاح', data: booking });
@@ -247,6 +263,11 @@ const providerAvailability = asyncHandler(async (req, res) => {
 const doctorsStatus = asyncHandler(async (req, res) => {
   const doctors = await Doctor.find().lean();
   return res.json({ success: true, data: doctors });
+});
+
+const nursesStatus = asyncHandler(async (req, res) => {
+  const nurses = await Nurse.find().lean();
+  return res.json({ success: true, data: nurses });
 });
 
 const analytics = asyncHandler(async (req, res) => {
@@ -298,27 +319,27 @@ const createDoctor = asyncHandler(async (req, res) => {
       profileImage: profileImage || undefined,
       location: normalizedLocation,
       basePrice,
-      urgentPrice: urgentPrice !== undefined ? urgentPrice : undefined, 
-      commissionRate, 
+      urgentPrice: urgentPrice !== undefined ? urgentPrice : undefined,
+      commissionRate,
       userId: user._id,
       addedBy: req.user.id || req.user._id
     });
 
-    await logAuditEvent({ 
-      actorId: req.user.id || req.user._id, 
-      actorRole: 'Staff', 
-      action: 'CREATE_DOCTOR', 
-      entityId: doctor._id, 
+    await logAuditEvent({
+      actorId: req.user.id || req.user._id,
+      actorRole: 'Staff',
+      action: 'CREATE_DOCTOR',
+      entityId: doctor._id,
       entityType: 'Doctor',
-      meta: { name, basePrice, urgentPrice, commissionRate } 
+      meta: { name, basePrice, urgentPrice, commissionRate }
     });
 
     return res.status(201).json({ success: true, data: { doctor, user: { email: user.email, role: user.role } } });
   } catch (error) {
     if (error.code === 11000) {
-      const message = error.keyValue.email ? 'هذا البريد الإلكتروني مستخدم بالفعل' : 
-                      error.keyValue.phoneNumber ? 'هذا الطبيب مسجل بالفعل بنفس رقم الهاتف' : 
-                      'يوجد طبيب آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
+      const message = error.keyValue.email ? 'هذا البريد الإلكتروني مستخدم بالفعل' :
+        error.keyValue.phoneNumber ? 'هذا الطبيب مسجل بالفعل بنفس رقم الهاتف' :
+          'يوجد طبيب آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
       return res.status(409).json({ success: false, message });
     }
     throw error;
@@ -327,11 +348,96 @@ const createDoctor = asyncHandler(async (req, res) => {
 
 const updateDoctor = asyncHandler(async (req, res) => {
   try {
-    const doctor = await Doctor.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-    return res.json({ success: true, data: doctor });
+    const updates = { ...req.body };
+    if (updates.location) {
+      updates.location = normalizeGeoPoint(updates.location, 'location');
+    }
+
+    const doctor = await Doctor.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+    if (!doctor) {
+      return res.status(404).json({ success: false, message: 'الطبيب غير موجود' });
+    }
+
+    if (doctor.userId) {
+      const userUpdates = {};
+      if (updates.name) userUpdates.name = updates.name;
+      if (updates.email) userUpdates.email = updates.email.toLowerCase().trim();
+      if (updates.phoneNumber) userUpdates.phoneNumber = updates.phoneNumber;
+      if (updates.address) userUpdates.address = updates.address;
+      if (updates.profileImage) userUpdates.profileImage = updates.profileImage;
+      if (updates.location) userUpdates.location = updates.location;
+
+      if (Object.keys(userUpdates).length > 0) {
+        await User.findByIdAndUpdate(doctor.userId, userUpdates).catch(() => { });
+      }
+    }
+
+    await logAuditEvent({
+      actorId: req.user.id || req.user._id,
+      actorRole: req.user.role,
+      action: 'UPDATE_DOCTOR',
+      entityId: doctor._id,
+      entityType: 'Doctor',
+      meta: { updates }
+    });
+
+    return res.json({ success: true, message: 'تم تحديث بيانات الطبيب بنجاح', data: doctor });
   } catch (error) {
     if (error.code === 11000) {
-      const message = error.keyValue?.phoneNumber ? 'هذا الطبيب مسجل بالفعل بنفس رقم الهاتف' : 'يوجد طبيب آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
+      const message = error.keyValue?.email
+        ? 'هذا البريد الإلكتروني مستخدم بالفعل'
+        : error.keyValue?.phoneNumber
+          ? 'هذا الهاتف مسجل بالفعل لحساب آخر'
+          : 'يوجد طبيب آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
+      return res.status(409).json({ success: false, message });
+    }
+    throw error;
+  }
+});
+
+const updateNurse = asyncHandler(async (req, res) => {
+  try {
+    const updates = { ...req.body };
+    if (updates.location) {
+      updates.location = normalizeGeoPoint(updates.location, 'location');
+    }
+
+    const nurse = await Nurse.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+    if (!nurse) {
+      return res.status(404).json({ success: false, message: 'الممرض غير موجود' });
+    }
+
+    if (nurse.userId) {
+      const userUpdates = {};
+      if (updates.name) userUpdates.name = updates.name;
+      if (updates.email) userUpdates.email = updates.email.toLowerCase().trim();
+      if (updates.phoneNumber) userUpdates.phoneNumber = updates.phoneNumber;
+      if (updates.address) userUpdates.address = updates.address;
+      if (updates.profileImage) userUpdates.profileImage = updates.profileImage;
+      if (updates.location) userUpdates.location = updates.location;
+
+      if (Object.keys(userUpdates).length > 0) {
+        await User.findByIdAndUpdate(nurse.userId, userUpdates).catch(() => { });
+      }
+    }
+
+    await logAuditEvent({
+      actorId: req.user.id || req.user._id,
+      actorRole: req.user.role,
+      action: 'UPDATE_NURSE',
+      entityId: nurse._id,
+      entityType: 'Nurse',
+      meta: { updates }
+    });
+
+    return res.json({ success: true, message: 'تم تحديث بيانات الممرض بنجاح', data: nurse });
+  } catch (error) {
+    if (error.code === 11000) {
+      const message = error.keyValue?.email
+        ? 'هذا البريد الإلكتروني مستخدم بالفعل'
+        : error.keyValue?.phoneNumber
+          ? 'هذا الهاتف مسجل بالفعل لحساب آخر'
+          : 'يوجد ممرض آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
       return res.status(409).json({ success: false, message });
     }
     throw error;
@@ -396,27 +502,27 @@ const createNurse = asyncHandler(async (req, res) => {
       name,
       phoneNumber,
       location: normalizedLocation,
-      profileImage: profileImage || undefined, 
-      commissionRate, 
+      profileImage: profileImage || undefined,
+      commissionRate,
       userId: user._id,
       addedBy: req.user.id || req.user._id
     });
 
-    await logAuditEvent({ 
-      actorId: req.user.id || req.user._id, 
-      actorRole: 'Staff', 
-      action: 'CREATE_NURSE', 
-      entityId: nurse._id, 
-      entityType: 'Nurse', 
-      meta: { name, commissionRate } 
+    await logAuditEvent({
+      actorId: req.user.id || req.user._id,
+      actorRole: 'Staff',
+      action: 'CREATE_NURSE',
+      entityId: nurse._id,
+      entityType: 'Nurse',
+      meta: { name, commissionRate }
     });
 
     return res.status(201).json({ success: true, data: { nurse, user: { email: user.email, role: user.role } } });
   } catch (error) {
     if (error.code === 11000) {
-      const message = error.keyValue.email ? 'هذا البريد الإلكتروني مستخدم بالفعل' : 
-                      error.keyValue.phoneNumber ? 'هذا الممرض مسجل بالفعل بنفس رقم الهاتف' : 
-                      'يوجد ممرض آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
+      const message = error.keyValue.email ? 'هذا البريد الإلكتروني مستخدم بالفعل' :
+        error.keyValue.phoneNumber ? 'هذا الممرض مسجل بالفعل بنفس رقم الهاتف' :
+          'يوجد ممرض آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
       return res.status(409).json({ success: false, message });
     }
     throw error;
@@ -440,34 +546,34 @@ const createStaffOrAdmin = asyncHandler(async (req, res) => {
       createdByAdminID: req.user.id || req.user._id
     });
 
-    await logAuditEvent({ 
-      actorId: req.user.id || req.user._id, 
-      actorRole: req.user.role, 
-      action: `CREATE_${role.toUpperCase()}`, 
-      entityId: user._id, 
-      entityType: 'User', 
-      meta: { name, email, role, phoneNumber } 
+    await logAuditEvent({
+      actorId: req.user.id || req.user._id,
+      actorRole: req.user.role,
+      action: `CREATE_${role.toUpperCase()}`,
+      entityId: user._id,
+      entityType: 'User',
+      meta: { name, email, role, phoneNumber }
     });
 
-    return res.status(201).json({ 
-      success: true, 
+    return res.status(201).json({
+      success: true,
       message: `تم إنشاء حساب الـ ${role} بنجاح`,
-      data: { 
+      data: {
         id: user._id,
         name: user.name,
-        email: user.email, 
+        email: user.email,
         role: user.role,
-        phoneNumber: user.phoneNumber 
-      } 
+        phoneNumber: user.phoneNumber
+      }
     });
   } catch (error) {
     if (error.code === 11000) {
-      const message = error.keyValue.email 
-        ? 'هذا البريد الإلكتروني مستخدم بالفعل' 
-        : error.keyValue.phoneNumber 
-        ? 'رقم الهاتف هذا مستخدم بالفعل لحساب آخر' 
-        : 'هناك بيانات مسجلة مسبقاً بنفس القيمة';
-        
+      const message = error.keyValue.email
+        ? 'هذا البريد الإلكتروني مستخدم بالفعل'
+        : error.keyValue.phoneNumber
+          ? 'رقم الهاتف هذا مستخدم بالفعل لحساب آخر'
+          : 'هناك بيانات مسجلة مسبقاً بنفس القيمة';
+
       return res.status(409).json({ success: false, message });
     }
     throw error;
@@ -476,9 +582,9 @@ const createStaffOrAdmin = asyncHandler(async (req, res) => {
 
 module.exports = {
   listAllBookings, cancelBookingHandler, cancelBookingByNumberHandler,
-  getCompletedBookingsForSettlement, settleBookings, getBookingDetails, 
-  getProviderFinancialSummary, updateBookingByAdmin, providerAvailability, 
-  doctorsStatus, analytics, toggleProviderStatus, createDoctor, updateDoctor, 
-  listNursingServices, createNursingService, updateNursingService, 
+  getCompletedBookingsForSettlement, settleBookings, getBookingDetails,
+  getProviderFinancialSummary, updateBookingByAdmin, providerAvailability,
+  doctorsStatus, nursesStatus, analytics, toggleProviderStatus, createDoctor, updateDoctor, updateNurse,
+  listNursingServices, createNursingService, updateNursingService,
   listAuditLogsHandler, createNurse, createStaffOrAdmin
 };

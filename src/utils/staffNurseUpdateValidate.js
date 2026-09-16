@@ -6,20 +6,11 @@ module.exports = {
     name: { type: 'string', minLength: 1 },
     email: { type: 'string', format: 'email' },
     phoneNumber: { type: 'string', pattern: '^01[0125][0-9]{8}$' },
-    secondaryPhoneNumber: { type: 'string', pattern: '^01[0125][0-9]{8}$' },
     address: { type: 'string', minLength: 1 },
-    specialization: { 
-      type: 'string', 
-      enum: [
-        'باطنة', 'صدرية', 'نفسية', 'قلب وأوعية دموية', 'عظام', 
-        'جلدية', 'رمد', 'أسنان', 'مخ وأعصاب', 'جهاز هضمي وخبد', 
-        'أنف وأذن وحنجرة', 'جراحة عامة', 'نسا وتوليد', 'أطفال'
-      ] 
-    },
-    basePrice: { type: 'number', minimum: 0 },
-    urgentPrice: { type: 'number', minimum: 0 },
     commissionRate: { type: 'number', minimum: 0, maximum: 100 },
     profileImage: { type: 'string', minLength: 1 },
+    experience: { type: 'string', minLength: 1 },
+    services: { type: 'array', items: { type: 'string' } },
     location: {
       type: 'object',
       additionalProperties: false,

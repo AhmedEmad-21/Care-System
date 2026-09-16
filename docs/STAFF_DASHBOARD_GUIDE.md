@@ -419,7 +419,36 @@ Authorization: Bearer <accessToken>
 
 ---
 
-### 4.4 عرض الملخص المالي لمزود الخدمة (Provider Financial Summary)
+### 4.4 تعديل بيانات ممرض (Update Nurse)
+* **Method & Path:** `PATCH /api/staff/nurses/:id`
+* **Auth:** Required (`Staff` or `Admin`)
+
+#### 📥 Request Body Example:
+```json
+{
+  "address": "الفيوم - شارع البحر",
+  "commissionRate": 12,
+  "isAvailable": true
+}
+```
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "message": "تم تحديث بيانات الممرض بنجاح",
+  "data": {
+    "_id": "64a7b2c1f1a2b3c4d5e6f7a9",
+    "name": "م. كريم سعيد",
+    "commissionRate": 12,
+    "isAvailable": true
+  }
+}
+```
+
+---
+
+### 4.5 عرض الملخص المالي التفصيلي لمزود الخدمة (Provider Financial Summary)
 * **Method & Path:** `GET /api/staff/providers/:id/financial-summary`
 * **Auth:** Required (`Staff` or `Admin`)
 
@@ -429,11 +458,16 @@ Authorization: Bearer <accessToken>
   "success": true,
   "data": {
     "providerId": "64a7b2c1f1a2b3c4d5e6f7a1",
-    "commissionRate": 15,
-    "totalCompletedBookings": 10,
-    "totalEarnings": 4250,
-    "settledAmount": 3000,
-    "pendingSettlementAmount": 1250
+    "providerName": "د. أحمد محمود",
+    "commissionRate": 10,
+    "totalCompletedBookings": 1,
+    "totalRevenue": 500,
+    "totalPlatformCommission": 50,
+    "settledPlatformCommission": 50,
+    "pendingPlatformCommission": 0,
+    "totalEarnings": 450,
+    "settledAmount": 450,
+    "pendingSettlementAmount": 0
   }
 }
 ```
