@@ -44,10 +44,18 @@ if (config.appConfig.trustProxy) app.set("trust proxy", 1);
 app.use(cors({
   origin: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   credentials: true,
   optionsSuccessStatus: 204
 }));
+
+// Handle preflight OPTIONS requests immediately
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
@@ -73,6 +81,8 @@ const connectDB = async () => {
 
 // المسارات
 app.use("/api/auth", authRoutes);
+app.use("/api/login", authRoutes);
+app.use("/login", authRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/nurses", nurseRoutes);
 app.use("/api/bookings", bookingRoutes);
@@ -123,7 +133,8 @@ if (require.main === module) {
 const KEEP_ALIVE_INTERVAL = 10 * 60 * 1000; // 10 دقائق
 
 setInterval(() => {
-  const serverUrl = process.env.EXTERNAL_URL || `http://localhost:${config.port}`;
+  const isDev = !config.isProduction;
+  const serverUrl = (isDev ? null : process.env.EXTERNAL_URL) || `http://localhost:${config.port}`;
   
   const client = serverUrl.startsWith('https') ? require('https') : http;
   
