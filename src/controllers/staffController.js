@@ -8,6 +8,7 @@ const AuditLog = require('../models/auditLogModel');
 const User = require('../models/userModel');
 const { cancelBooking } = require('../services/bookingService');
 const { logAuditEvent, listAuditLogs } = require('../services/auditLogService');
+const { normalizeGeoPoint } = require('../utils/geoPoint');
 
 // 1. عرض ومتابعة جميع الحجوزات مع إمكانية الفلترة الشاملة
 const listAllBookings = asyncHandler(async (req, res) => {
@@ -272,6 +273,11 @@ const createDoctor = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: 'نسبة العمولة (commissionRate) مطلوبة' });
     }
 
+    const normalizedLocation = normalizeGeoPoint(location, 'location');
+    if (!normalizedLocation) {
+      return res.status(400).json({ success: false, message: 'الموقع الجغرافي (location) مطلوب ويجب أن يحتوي على الإحداثيات [longitude, latitude]' });
+    }
+
     const user = await User.create({
       role: 'Doctor',
       name,
@@ -280,7 +286,7 @@ const createDoctor = asyncHandler(async (req, res) => {
       phoneNumber,
       address: address || 'عنوان الطبيب',
       profileImage: profileImage || undefined,
-      location,
+      location: normalizedLocation,
       createdByAdminID: req.user.id || req.user._id
     });
 
@@ -290,7 +296,7 @@ const createDoctor = asyncHandler(async (req, res) => {
       phoneNumber,
       address,
       profileImage: profileImage || undefined,
-      location,
+      location: normalizedLocation,
       basePrice,
       urgentPrice: urgentPrice !== undefined ? urgentPrice : undefined, 
       commissionRate, 
@@ -368,6 +374,11 @@ const createNurse = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: 'نسبة العمولة (commissionRate) مطلوبة' });
     }
 
+    const normalizedLocation = normalizeGeoPoint(location, 'location');
+    if (!normalizedLocation) {
+      return res.status(400).json({ success: false, message: 'الموقع الجغرافي (location) مطلوب ويجب أن يحتوي على الإحداثيات [longitude, latitude]' });
+    }
+
     const user = await User.create({
       role: 'Nurse',
       name,
@@ -376,7 +387,7 @@ const createNurse = asyncHandler(async (req, res) => {
       phoneNumber,
       address: address || 'عنوان الممرض',
       profileImage: profileImage || undefined,
-      location,
+      location: normalizedLocation,
       createdByAdminID: req.user.id || req.user._id
     });
 
@@ -384,7 +395,7 @@ const createNurse = asyncHandler(async (req, res) => {
       ...nurseData,
       name,
       phoneNumber,
-      location,
+      location: normalizedLocation,
       profileImage: profileImage || undefined, 
       commissionRate, 
       userId: user._id,

@@ -288,6 +288,11 @@ Authorization: Bearer <accessToken>
 * **Method & Path:** `POST /api/staff/doctors`
 * **Auth:** Required (`Staff` or `Admin`)
 
+> ⚠️ **ملاحظة هامة جداً للفرونت إند:** الإحداثيات الجغرافية `location` **إجبارية مطلوبة (Required)** عند إضافة طبيب جديد، وتتكون من GeoJSON Point بصيغة `[longitude, latitude]` (خط الطول ثم خط العرض).
+
+#### 📋 الحقول المطلوبة (Required Fields):
+* `name`, `email`, `password`, `phoneNumber`, `address`, `specialization`, `basePrice`, `commissionRate`, `location` (`type: "Point"`, `coordinates: [lng, lat]`).
+
 #### 📥 Request Body Example:
 ```json
 {
@@ -366,6 +371,11 @@ Authorization: Bearer <accessToken>
 ### 4.3 إضافة ممرض جديد (Create Nurse)
 * **Method & Path:** `POST /api/staff/nurses`
 * **Auth:** Required (`Staff` or `Admin`)
+
+> ⚠️ **ملاحظة هامة جداً للفرونت إند:** الإحداثيات الجغرافية `location` **إجبارية مطلوبة (Required)** عند إضافة ممرض جديد، وتتكون من GeoJSON Point بصيغة `[longitude, latitude]` (خط الطول ثم خط العرض).
+
+#### 📋 الحقول المطلوبة (Required Fields):
+* `name`, `email`, `password`, `phoneNumber`, `address`, `commissionRate`, `location` (`type: "Point"`, `coordinates: [lng, lat]`).
 
 #### 📥 Request Body Example:
 ```json
