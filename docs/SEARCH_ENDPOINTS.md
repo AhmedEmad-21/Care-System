@@ -114,16 +114,58 @@ GET /api/nursing-services/search-by-name?name=حقن
 
 ## شكل الاستجابة الناجحة
 
-Status: `200`
+Status: `200 OK`
 
 ```json
 {
   "success": true,
-  "count": 2,
-  "data": []
+  "count": 1,
+  "data": [
+    {
+      "_id": "6aac5440d173298f87724192",
+      "name": "دكتور حازم",
+      "specialization": "باطنة",
+      "phoneNumber": "01002694545",
+      "secondaryPhoneNumber": "01099887766",
+      "address": "الفيوم المرور بجوار مدرسة الرسالة",
+      "basePrice": 300,
+      "urgentPrice": 450,
+      "commissionRate": 10,
+      "rating": 4.8,
+      "totalReviews": 12,
+      "profileImage": "https://res.cloudinary.com/.../doctor.jpg",
+      "isAvailable": true,
+      "workingHours": {
+        "start": "09:00",
+        "end": "17:00"
+      },
+      "offDays": [5, 6],
+      "location": {
+        "type": "Point",
+        "coordinates": [30.8428, 29.3084]
+      },
+      "userId": {
+        "_id": "6aac543fd173298f87724191",
+        "name": "دكتور حازم",
+        "email": "hazem@gmail.com",
+        "phoneNumber": "01002694545",
+        "address": "الفيوم المرور بجوار مدرسة الرسالة",
+        "location": {
+          "type": "Point",
+          "coordinates": [30.8428, 29.3084]
+        }
+      },
+      "dist": {
+        "calculated": 1250.5
+      }
+    }
+  ],
+  "message": "done"
 }
 ```
 
-مع `lat` و `long` للدكتور أو الممرض غالباً يظهر `dist.calculated` بالمتر.
-
-الإحداثيات في MongoDB: `[long, lat]`. من الـ query: `lat` و `long` منفصلين.
+> **ملاحظات هامة للفرونت إند:**
+> - `basePrice`: سعر الكشف العادي (Number).
+> - `urgentPrice`: سعر الكشف المستعجل (Number) - مضمون وجوده ومرجعه لسعر الكشف العادي في حال لم يُحدد الطبيب سعراً مستعجلاً خاصاً به.
+> - حقل `dist.calculated`: يظهر فقط عند تمرير `lat` و `long` معاً بالطلب ويمثل المسافة بالمتر بين المريض والدكتور.
+> - الإحداثيات في كائن `location.coordinates`: بنظام GeoJSON `[longitude, latitude]`.

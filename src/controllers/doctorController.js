@@ -6,6 +6,20 @@ const {
   withOptionalDateFilter
 } = require('../utils/nameSearch');
 
+const formatDoctorPrice = (doc) => {
+  if (!doc) return doc;
+  const basePrice = doc.basePrice != null ? Number(doc.basePrice) : 0;
+  const urgentPrice = (doc.urgentPrice != null && Number(doc.urgentPrice) > 0)
+    ? Number(doc.urgentPrice)
+    : basePrice;
+
+  return {
+    ...doc,
+    basePrice,
+    urgentPrice
+  };
+};
+
 const listDoctors = asyncHandler(async (req, res) => {
   const { date } = req.query;
   let filter = { ...req.filterCriteria, isAvailable: true };
@@ -13,12 +27,12 @@ const listDoctors = asyncHandler(async (req, res) => {
     filter.offDays = { $ne: new Date(date).getDay() };
   }
   const doctors = await Doctor.find(filter).populate('userId', 'name').lean();
-  return res.json({ success: true, data: doctors });
+  return res.json({ success: true, data: doctors.map(formatDoctorPrice) });
 });
 
 const getDoctorById = asyncHandler(async (req, res) => {
   const doctor = await Doctor.findById(req.params.id).populate('userId', 'name').lean();
-  return res.json({ success: true, data: doctor });
+  return res.json({ success: true, data: formatDoctorPrice(doctor) });
 });
 
 const listAvailableDoctors = asyncHandler(async (req, res) => {
@@ -46,7 +60,7 @@ const listAvailableDoctors = asyncHandler(async (req, res) => {
   return res.json({ 
     success: true, 
     count: doctors.length, 
-    data: doctors 
+    data: doctors.map(formatDoctorPrice)
   });
 });
 
@@ -88,7 +102,7 @@ const searchDoctorsByName = asyncHandler(async (req, res) => {
   return res.json({
     success: true,
     count: doctors.length,
-    data: doctors
+    data: doctors.map(formatDoctorPrice)
   });
 });
 
@@ -152,7 +166,7 @@ const filterDoctors = asyncHandler(async (req, res) => {
     return res.json({
       success: true,
       count: doctors.length,
-      data: doctors
+      data: doctors.map(formatDoctorPrice)
     });
   }
 
@@ -163,7 +177,7 @@ const filterDoctors = asyncHandler(async (req, res) => {
   return res.json({
     success: true,
     count: doctors.length,
-    data: doctors
+    data: doctors.map(formatDoctorPrice)
   });
 });
 
