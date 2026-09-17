@@ -438,6 +438,7 @@ const toggleProviderStatus = asyncHandler(async (req, res) => {
 
 // 9. إنشاء طبيب جديد (مع إجبار commissionRate فقط، وباقي الحقول مثل urgentPrice و profileImage اختيارية)
 const createDoctor = asyncHandler(async (req, res) => {
+  let createdUser = null;
   try {
     const { email, password, name, phoneNumber, address, profileImage, location, basePrice, urgentPrice, commissionRate, ...doctorData } = req.body;
 
@@ -450,28 +451,63 @@ const createDoctor = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: 'الموقع الجغرافي (location) مطلوب ويجب أن يحتوي على الإحداثيات [longitude, latitude]' });
     }
 
-    const user = await User.create({
-      role: 'Doctor',
-      name,
-      email,
-      passwordHash: password,
-      phoneNumber,
-      address: address || 'عنوان الطبيب',
-      profileImage: profileImage || undefined,
-      location: normalizedLocation,
-      createdByAdminID: req.user.id || req.user._id
+    const computedUrgentPrice = (urgentPrice !== undefined && urgentPrice !== null && urgentPrice !== '')
+      ? Number(urgentPrice)
+      : (Number(basePrice) || 0);
+
+    const normalizedEmail = email ? email.toLowerCase().trim() : undefined;
+    let user = await User.findOne({
+      $or: [
+        ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+        ...(phoneNumber ? [{ phoneNumber }] : [])
+      ]
     });
+
+    if (user) {
+      // إذا كان المستخدم موجوداً، نتحقق هل له ملف طبيب بالفعل
+      const existingDoctor = await Doctor.findOne({ $or: [{ userId: user._id }, { phoneNumber: user.phoneNumber }] });
+      if (existingDoctor) {
+        const message = (user.email === normalizedEmail)
+          ? 'هذا البريد الإلكتروني مستخدم بالفعل'
+          : 'هذا الطبيب مسجل بالفعل بنفس رقم الهاتف';
+        return res.status(409).json({ success: false, message });
+      }
+
+      // إذا كان الحساب موجوداً ولكن بدون ملف طبيب (Orphan User)، نقوم بتحديث الحساب وربطه
+      user.role = 'Doctor';
+      user.name = name;
+      if (password) user.passwordHash = password;
+      user.address = address || user.address || 'عنوان الطبيب';
+      if (profileImage) user.profileImage = profileImage;
+      user.location = normalizedLocation;
+      user.accountStatus = 'active';
+      user.vettingStatus = 'approved';
+      await user.save();
+    } else {
+      user = await User.create({
+        role: 'Doctor',
+        name,
+        email: normalizedEmail,
+        passwordHash: password,
+        phoneNumber,
+        address: address || 'عنوان الطبيب',
+        profileImage: profileImage || undefined,
+        location: normalizedLocation,
+        createdByAdminID: req.user.id || req.user._id
+      });
+      createdUser = user;
+    }
 
     const doctor = await Doctor.create({
       ...doctorData,
       name,
       phoneNumber,
-      address,
+      address: address || 'عنوان الطبيب',
       profileImage: profileImage || undefined,
       location: normalizedLocation,
-      basePrice,
-      urgentPrice: urgentPrice !== undefined ? urgentPrice : undefined,
-      commissionRate,
+      basePrice: Number(basePrice) || 0,
+      urgentPrice: computedUrgentPrice,
+      commissionRate: Number(commissionRate) || 10,
       userId: user._id,
       addedBy: req.user.id || req.user._id
     });
@@ -482,15 +518,30 @@ const createDoctor = asyncHandler(async (req, res) => {
       action: 'CREATE_DOCTOR',
       entityId: doctor._id,
       entityType: 'Doctor',
-      meta: { name, basePrice, urgentPrice, commissionRate }
+      meta: { name, basePrice: Number(basePrice) || 0, urgentPrice: computedUrgentPrice, commissionRate }
     });
 
-    return res.status(201).json({ success: true, data: { doctor, user: { email: user.email, role: user.role } } });
+    return res.status(201).json({
+      success: true,
+      data: {
+        doctor,
+        user: {
+          id: user._id,
+          email: user.email,
+          role: user.role
+        }
+      }
+    });
   } catch (error) {
+    // في حالة فشل إنشاء ملف الطبيب لمستخدم جديد، نقوم بعمل Rollback وحذف المستخدم
+    if (createdUser?._id) {
+      await User.findByIdAndDelete(createdUser._id).catch(() => {});
+    }
+
     if (error.code === 11000) {
-      const message = error.keyValue.email ? 'هذا البريد الإلكتروني مستخدم بالفعل' :
-        error.keyValue.phoneNumber ? 'هذا الطبيب مسجل بالفعل بنفس رقم الهاتف' :
-          'يوجد طبيب آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
+      const message = error.keyValue?.email ? 'هذا البريد الإلكتروني مستخدم بالفعل' :
+        error.keyValue?.phoneNumber ? 'هذا الطبيب مسجل بالفعل بنفس رقم الهاتف' :
+          'هناك بيانات مسجلة مسبقاً بنفس القيمة';
       return res.status(409).json({ success: false, message });
     }
     throw error;
@@ -624,6 +675,7 @@ const listAuditLogsHandler = asyncHandler(async (req, res) => {
 
 // 10. إنشاء ممرض جديد (مع إجبار commissionRate فقط، و profileImage اختيارية)
 const createNurse = asyncHandler(async (req, res) => {
+  let createdUser = null;
   try {
     const { email, password, name, phoneNumber, address, location, profileImage, commissionRate, ...nurseData } = req.body;
 
@@ -636,17 +688,46 @@ const createNurse = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: 'الموقع الجغرافي (location) مطلوب ويجب أن يحتوي على الإحداثيات [longitude, latitude]' });
     }
 
-    const user = await User.create({
-      role: 'Nurse',
-      name,
-      email,
-      passwordHash: password,
-      phoneNumber,
-      address: address || 'عنوان الممرض',
-      profileImage: profileImage || undefined,
-      location: normalizedLocation,
-      createdByAdminID: req.user.id || req.user._id
+    const normalizedEmail = email ? email.toLowerCase().trim() : undefined;
+    let user = await User.findOne({
+      $or: [
+        ...(normalizedEmail ? [{ email: normalizedEmail }] : []),
+        ...(phoneNumber ? [{ phoneNumber }] : [])
+      ]
     });
+
+    if (user) {
+      const existingNurse = await Nurse.findOne({ $or: [{ userId: user._id }, { phoneNumber: user.phoneNumber }] });
+      if (existingNurse) {
+        const message = (user.email === normalizedEmail)
+          ? 'هذا البريد الإلكتروني مستخدم بالفعل'
+          : 'هذا الممرض مسجل بالفعل بنفس رقم الهاتف';
+        return res.status(409).json({ success: false, message });
+      }
+
+      user.role = 'Nurse';
+      user.name = name;
+      if (password) user.passwordHash = password;
+      user.address = address || user.address || 'عنوان الممرض';
+      if (profileImage) user.profileImage = profileImage;
+      user.location = normalizedLocation;
+      user.accountStatus = 'active';
+      user.vettingStatus = 'approved';
+      await user.save();
+    } else {
+      user = await User.create({
+        role: 'Nurse',
+        name,
+        email: normalizedEmail,
+        passwordHash: password,
+        phoneNumber,
+        address: address || 'عنوان الممرض',
+        profileImage: profileImage || undefined,
+        location: normalizedLocation,
+        createdByAdminID: req.user.id || req.user._id
+      });
+      createdUser = user;
+    }
 
     const nurse = await Nurse.create({
       ...nurseData,
@@ -654,7 +735,7 @@ const createNurse = asyncHandler(async (req, res) => {
       phoneNumber,
       location: normalizedLocation,
       profileImage: profileImage || undefined,
-      commissionRate,
+      commissionRate: Number(commissionRate) || 10,
       userId: user._id,
       addedBy: req.user.id || req.user._id
     });
@@ -665,15 +746,29 @@ const createNurse = asyncHandler(async (req, res) => {
       action: 'CREATE_NURSE',
       entityId: nurse._id,
       entityType: 'Nurse',
-      meta: { name, commissionRate }
+      meta: { name, commissionRate: Number(commissionRate) || 10 }
     });
 
-    return res.status(201).json({ success: true, data: { nurse, user: { email: user.email, role: user.role } } });
+    return res.status(201).json({
+      success: true,
+      data: {
+        nurse,
+        user: {
+          id: user._id,
+          email: user.email,
+          role: user.role
+        }
+      }
+    });
   } catch (error) {
+    if (createdUser?._id) {
+      await User.findByIdAndDelete(createdUser._id).catch(() => {});
+    }
+
     if (error.code === 11000) {
-      const message = error.keyValue.email ? 'هذا البريد الإلكتروني مستخدم بالفعل' :
-        error.keyValue.phoneNumber ? 'هذا الممرض مسجل بالفعل بنفس رقم الهاتف' :
-          'يوجد ممرض آخر مسجل بالفعل في هذا الموقع الجغرافي بالضبط';
+      const message = error.keyValue?.email ? 'هذا البريد الإلكتروني مستخدم بالفعل' :
+        error.keyValue?.phoneNumber ? 'هذا الممرض مسجل بالفعل بنفس رقم الهاتف' :
+          'هناك بيانات مسجلة مسبقاً بنفس القيمة';
       return res.status(409).json({ success: false, message });
     }
     throw error;

@@ -19,11 +19,13 @@ const nurseSchema = new mongoose.Schema(
     rating: { type: Number, default: 0, min: 0, max: 5 },
     totalReviews: { type: Number, default: 0, min: 0 },
     isAvailable: { type: Boolean, default: true },
-    offDays: { type: [Number], default: [] }
+    offDays: { type: [Number], default: [] },
+    addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
   },
   { timestamps: true }
 );
 
 nurseSchema.index({ location: '2dsphere' });
+nurseSchema.index({ userId: 1 });
 
 module.exports = mongoose.model('Nurse', nurseSchema);

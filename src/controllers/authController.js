@@ -35,7 +35,11 @@ const changePassword = asyncHandler(async (req, res) => {
 });
 
 const me = asyncHandler(async (req, res) => {
-  res.json({ success: true, data: await authService.getMe(req.user.id || req.user._id) });
+  const user = await authService.getMe(req.user.id || req.user._id);
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'المستخدم غير موجود أو تم حذفه من النظام' });
+  }
+  res.json({ success: true, data: user });
 });
 
 const updateProfile = asyncHandler(async (req, res) => {

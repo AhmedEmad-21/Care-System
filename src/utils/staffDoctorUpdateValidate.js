@@ -31,7 +31,7 @@ module.exports = {
     basePrice: { type: 'number', minimum: 0 },
     urgentPrice: { type: 'number', minimum: 0 },
     commissionRate: { type: 'number', minimum: 0, maximum: 100 },
-    profileImage: { type: 'string', minLength: 1 },
+    profileImage: { type: 'string' },
     location: {
       type: 'object',
       additionalProperties: false,

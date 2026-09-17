@@ -2,6 +2,7 @@ const Booking = require('../models/bookingModel');
 const NursingBooking = require('../models/nursingBookingModel');
 const Doctor = require('../models/doctorModel');
 const Nurse = require('../models/nurseModel');
+const User = require('../models/userModel');
 const { NotFoundError, BadRequestError } = require('../errors/appErrors');
 const { BOOKING_STATUSES } = require('../config/constants');
 
@@ -15,6 +16,64 @@ const getProviderDetails = async (userId) => {
   provider = await Nurse.findOne({ userId }).lean();
   if (provider) {
     return { providerModel: Nurse, providerDoc: provider, type: 'nurse', field: 'nurseId' };
+  }
+
+  // [تعافي تلقائي ذكي] في حال كان المستخدم مسجلاً بصلاحية Doctor أو Nurse ولكن ملفه غير مرتبط بالـ userId
+  const user = await User.findById(userId).lean();
+  if (user) {
+    if (user.role === 'Doctor') {
+      // 1. محاولة الربط برقم الهاتف إن وجد ملف طبيب بنفس الرقم
+      if (user.phoneNumber) {
+        let matchedDoc = await Doctor.findOne({ phoneNumber: user.phoneNumber });
+        if (matchedDoc) {
+          matchedDoc.userId = user._id;
+          await matchedDoc.save();
+          return { providerModel: Doctor, providerDoc: matchedDoc.toObject(), type: 'doctor', field: 'doctorId' };
+        }
+      }
+
+      // 2. إذا لم يكن هناك ملف طبيب إطلاقاً، إنشاء ملف طبيب مرتبط به فوراً
+      const createdDoctor = await Doctor.create({
+        name: user.name,
+        userId: user._id,
+        phoneNumber: user.phoneNumber,
+        address: user.address || 'عنوان العيادة',
+        specialization: 'باطنة',
+        basePrice: 200,
+        urgentPrice: 250,
+        commissionRate: 10,
+        location: (user.location && Array.isArray(user.location.coordinates) && user.location.coordinates.length === 2)
+          ? user.location
+          : { type: 'Point', coordinates: [30.8428, 29.3084] },
+        addedBy: user.createdByAdminID || user._id,
+        isAvailable: true
+      });
+      return { providerModel: Doctor, providerDoc: createdDoctor.toObject(), type: 'doctor', field: 'doctorId' };
+    }
+
+    if (user.role === 'Nurse') {
+      if (user.phoneNumber) {
+        let matchedNurse = await Nurse.findOne({ phoneNumber: user.phoneNumber });
+        if (matchedNurse) {
+          matchedNurse.userId = user._id;
+          await matchedNurse.save();
+          return { providerModel: Nurse, providerDoc: matchedNurse.toObject(), type: 'nurse', field: 'nurseId' };
+        }
+      }
+
+      const createdNurse = await Nurse.create({
+        name: user.name,
+        userId: user._id,
+        phoneNumber: user.phoneNumber,
+        location: (user.location && Array.isArray(user.location.coordinates) && user.location.coordinates.length === 2)
+          ? user.location
+          : { type: 'Point', coordinates: [30.8428, 29.3084] },
+        commissionRate: 10,
+        addedBy: user.createdByAdminID || user._id,
+        isAvailable: true
+      });
+      return { providerModel: Nurse, providerDoc: createdNurse.toObject(), type: 'nurse', field: 'nurseId' };
+    }
   }
 
   throw new NotFoundError('لم يتم العثور على ملف مزود خدمة مرتبط بهذا الحساب');
@@ -203,5 +262,6 @@ module.exports = {
   scheduleBooking,
   updateBookingStatusService,
   getProviderSettlements,
-  updateOffDaysService
+  updateOffDaysService,
+  getProviderDetails
 };

@@ -77,12 +77,26 @@ const attachProfile = async (userDoc) => {
   if (!userDoc) return null;
   const user = sanitizeUser(userDoc);
   if (user.role === 'Doctor') {
-    user.profile = await Doctor.findOne({ userId: user._id }).lean();
+    let doc = await Doctor.findOne({ userId: user._id }).lean();
+    if (!doc && user.phoneNumber) {
+      doc = await Doctor.findOne({ phoneNumber: user.phoneNumber }).lean();
+      if (doc) {
+        await Doctor.findByIdAndUpdate(doc._id, { userId: user._id });
+      }
+    }
+    user.profile = doc;
     user.photo = resolveProfileImage(user.profileImage);
     if (user.profile) user.profile.photo = user.photo;
   }
   if (user.role === 'Nurse') {
-    user.profile = await Nurse.findOne({ userId: user._id }).lean();
+    let nurse = await Nurse.findOne({ userId: user._id }).lean();
+    if (!nurse && user.phoneNumber) {
+      nurse = await Nurse.findOne({ phoneNumber: user.phoneNumber }).lean();
+      if (nurse) {
+        await Nurse.findByIdAndUpdate(nurse._id, { userId: user._id });
+      }
+    }
+    user.profile = nurse;
   }
   return user;
 };

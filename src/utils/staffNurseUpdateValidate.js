@@ -8,7 +8,7 @@ module.exports = {
     phoneNumber: { type: 'string', pattern: '^01[0125][0-9]{8}$' },
     address: { type: 'string', minLength: 1 },
     commissionRate: { type: 'number', minimum: 0, maximum: 100 },
-    profileImage: { type: 'string', minLength: 1 },
+    profileImage: { type: 'string' },
     experience: { type: 'string', minLength: 1 },
     services: { type: 'array', items: { type: 'string' } },
     location: {

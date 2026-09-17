@@ -14,7 +14,7 @@ const doctorSchema = new mongoose.Schema({
   specialization: { type: String, required: true },
   location: { type: geoPointSchema, required: true },
   basePrice: { type: Number, required: true, min: 0 },
-  urgentPrice: { type: Number, required: true, min: 0 }, // [جديد] سعر الكشف المستعجل
+  urgentPrice: { type: Number, required: false, default: 0, min: 0 }, // [جديد] سعر الكشف المستعجل
   commissionRate: { type: Number, default: 10, min: 0 }, 
   rating: { type: Number, default: 0, min: 0, max: 5 },
   totalReviews: { type: Number, default: 0, min: 0 },
@@ -29,6 +29,6 @@ const doctorSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 doctorSchema.index({ location: '2dsphere' });
-doctorSchema.index({ "location.coordinates": 1 }, { unique: true });
+doctorSchema.index({ userId: 1 });
 
 module.exports = mongoose.model('Doctor', doctorSchema);
