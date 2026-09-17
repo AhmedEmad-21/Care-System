@@ -18,4 +18,7 @@ router.delete('/:id', authMW, notificationController.removeNotification);
 router.post('/broadcast', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(notificationBroadcastSchema), notificationController.broadcastNotification);
 router.post('/targeted', authMW, checkRoleMW('STAFF', 'ADMIN'), validateAjvMW(notificationBroadcastSchema), notificationController.targetedNotification);
 
+// إرسال رسالة دعم فني وإشعار الاستاف تلقائياً (دكتور / ممرض / مريض)
+router.post('/support-message', authMW, notificationController.sendSupportMessage);
+
 module.exports = router;

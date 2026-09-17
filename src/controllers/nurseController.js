@@ -6,17 +6,23 @@ const {
   withOptionalDateFilter
 } = require('../utils/nameSearch');
 
+const formatNurse = (doc) => {
+  if (!doc) return doc;
+  const { userId, ...rest } = doc;
+  return rest;
+};
+
 // 1. عرض الممرضين (القائمة الكاملة)
 const listNurses = asyncHandler(async (req, res) => {
-  const nurses = await Nurse.find({ isAvailable: true }).populate('userId');
-  return res.json({ success: true, data: nurses });
+  const nurses = await Nurse.find({ isAvailable: true }).select('-userId').lean();
+  return res.json({ success: true, data: nurses.map(formatNurse) });
 });
 
 // 2. عرض تفاصيل ممرض واحد
 const getNurseById = asyncHandler(async (req, res) => {
-  const nurse = await Nurse.findById(req.params.id).populate('userId');
+  const nurse = await Nurse.findById(req.params.id).select('-userId').lean();
   if (!nurse) return res.status(404).json({ success: false, message: 'Nurse not found' });
-  return res.json({ success: true, data: nurse });
+  return res.json({ success: true, data: formatNurse(nurse) });
 });
 
 // 3. البحث عن ممرضين حسب الموقع والخدمة
@@ -95,7 +101,7 @@ const searchNursesByName = asyncHandler(async (req, res) => {
   return res.json({
     success: true,
     count: nurses.length,
-    data: nurses
+    data: nurses.map(formatNurse)
   });
 });
 
@@ -132,23 +138,8 @@ const filterNurses = asyncHandler(async (req, res) => {
         }
       },
       {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'userId'
-        }
-      },
-      {
-        $unwind: {
-          path: '$userId',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
         $project: {
-          'userId.passwordHash': 0,
-          'userId.resetPasswordTokenHash': 0
+          userId: 0
         }
       }
     ]);
@@ -156,18 +147,18 @@ const filterNurses = asyncHandler(async (req, res) => {
     return res.json({
       success: true,
       count: nurses.length,
-      data: nurses
+      data: nurses.map(formatNurse)
     });
   }
 
   const nurses = await Nurse.find(query)
-    .populate('userId', 'name email phoneNumber profileImage address location')
+    .select('-userId')
     .lean();
 
   return res.json({
     success: true,
     count: nurses.length,
-    data: nurses
+    data: nurses.map(formatNurse)
   });
 });
 

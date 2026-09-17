@@ -330,6 +330,66 @@ const sendTargetedNotification = async ({ createdBy, title, body, type = 'genera
   return deliverTargetedNotification({ createdBy, title, body, type, data, userIds });
 };
 
+const notifyStaffOfSupportMessage = async ({ senderUser, message, subject, bookingNumber }) => {
+  const staffAndAdmins = await User.find({
+    role: { $in: ['Staff', 'Admin'] },
+    accountStatus: 'active'
+  }).select('_id name email').lean();
+
+  const recipientIds = staffAndAdmins.map(u => String(u._id));
+  if (!recipientIds.length) {
+    return { success: true, recipientCount: 0, message: 'No active staff accounts found' };
+  }
+
+  const roleInArabic = senderUser.role === 'Doctor' ? 'طبيب' : senderUser.role === 'Nurse' ? 'ممرض' : 'مريض';
+  const senderDisplayName = senderUser.name || 'مستخدم';
+  const title = `📩 رسالة دعم فني جديدة من ${roleInArabic}: ${senderDisplayName}`;
+  const bodyText = subject ? `[${subject}] ${message}` : message;
+
+  const notificationData = {
+    type: 'support_message',
+    senderId: String(senderUser._id || senderUser.id),
+    senderName: String(senderDisplayName),
+    senderRole: String(senderUser.role || 'Patient'),
+    senderPhone: String(senderUser.phoneNumber || ''),
+    bookingNumber: bookingNumber ? String(bookingNumber) : '',
+    message: String(message),
+    createdAt: new Date().toISOString()
+  };
+
+  await persistNotificationRecords({
+    recipientIds,
+    title,
+    body: bodyText,
+    type: 'support_message',
+    data: notificationData,
+    isBroadcast: true,
+    targetAudience: 'staff',
+    createdBy: senderUser._id || senderUser.id
+  });
+
+  const tokenDocs = await UserDeviceToken.find({ userId: { $in: recipientIds } }).lean();
+  const tokens = Array.from(new Set(tokenDocs.map((doc) => doc.fcmToken).filter(Boolean)));
+
+  if (tokens.length) {
+    await sendChunksToTokens({
+      tokens,
+      title,
+      body: bodyText,
+      type: 'support_message',
+      data: notificationData,
+      broadcast: true,
+      targetAudience: 'staff'
+    }).catch(err => console.error('⚠️ FCM Staff push notification error:', err.message));
+  }
+
+  return {
+    success: true,
+    recipientCount: recipientIds.length,
+    tokensNotified: tokens.length
+  };
+};
+
 module.exports = {
   registerDeviceToken,
   removeDeviceToken,
@@ -342,4 +402,5 @@ module.exports = {
   sendTargetedNotification,
   deliverBroadcastNotification,
   deliverTargetedNotification,
+  notifyStaffOfSupportMessage,
 };

@@ -112,6 +112,34 @@ const targetedNotification = asyncHandler(async (req, res) => {
   });
 });
 
+const sendSupportMessage = asyncHandler(async (req, res) => {
+  const { message, subject, bookingNumber } = req.body;
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({
+      success: false,
+      message: 'نص الرسالة مطلوب (message is required)'
+    });
+  }
+
+  const result = await notificationService.notifyStaffOfSupportMessage({
+    senderUser: req.user,
+    message: message.trim(),
+    subject: subject ? String(subject).trim() : '',
+    bookingNumber: bookingNumber ? String(bookingNumber).trim() : ''
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'تم إرسال رسالتك لفريق الدعم بنجاح وسيتم التواصل معك في أقرب وقت.',
+    data: {
+      senderRole: req.user.role,
+      senderName: req.user.name,
+      message: message.trim(),
+      notifiedStaffCount: result.recipientCount
+    }
+  });
+});
+
 module.exports = {
   registerFcmToken,
   deleteFcmToken,
@@ -121,4 +149,5 @@ module.exports = {
   removeNotification,
   broadcastNotification,
   targetedNotification,
+  sendSupportMessage,
 };

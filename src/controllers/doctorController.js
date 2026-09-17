@@ -13,8 +13,10 @@ const formatDoctorPrice = (doc) => {
     ? Number(doc.urgentPrice)
     : basePrice;
 
+  const { userId, ...rest } = doc;
+
   return {
-    ...doc,
+    ...rest,
     basePrice,
     urgentPrice
   };
@@ -26,12 +28,15 @@ const listDoctors = asyncHandler(async (req, res) => {
   if (date) {
     filter.offDays = { $ne: new Date(date).getDay() };
   }
-  const doctors = await Doctor.find(filter).populate('userId', 'name').lean();
+  const doctors = await Doctor.find(filter).select('-userId').lean();
   return res.json({ success: true, data: doctors.map(formatDoctorPrice) });
 });
 
 const getDoctorById = asyncHandler(async (req, res) => {
-  const doctor = await Doctor.findById(req.params.id).populate('userId', 'name').lean();
+  const doctor = await Doctor.findById(req.params.id).select('-userId').lean();
+  if (!doctor) {
+    return res.status(404).json({ success: false, message: 'Doctor not found' });
+  }
   return res.json({ success: true, data: formatDoctorPrice(doctor) });
 });
 
@@ -142,23 +147,8 @@ const filterDoctors = asyncHandler(async (req, res) => {
         }
       },
       {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'userId'
-        }
-      },
-      {
-        $unwind: {
-          path: '$userId',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
         $project: {
-          'userId.passwordHash': 0,
-          'userId.resetPasswordTokenHash': 0
+          userId: 0
         }
       }
     ]);
@@ -171,7 +161,7 @@ const filterDoctors = asyncHandler(async (req, res) => {
   }
 
   const doctors = await Doctor.find(query)
-    .populate('userId', 'name email phoneNumber profileImage address location')
+    .select('-userId')
     .lean();
 
   return res.json({

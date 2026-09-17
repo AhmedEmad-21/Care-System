@@ -26,6 +26,7 @@ const nursingServiceRoutes = require('./routes/nursingServiceRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const providerDashboardRoutes = require('./routes/providerDashboardRoutes'); // لوحة تحكم مزودي الخدمة الموحدة
+const supportRoutes = require('./routes/supportRoutes');
 const { startNotificationWorker } = require('./workers/notificationWorker');
 
 // [جديد] استيراد مهمة التذكير التلقائي للتقييمات
@@ -111,6 +112,7 @@ app.use("/api/nursing-services", nursingServiceRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/provider-dashboard', providerDashboardRoutes); // ربط مسارات لوحة التحكم
+app.use('/api/support', supportRoutes); // مسارات رسائل الدعم الفني
 
 // مسار ترحيبي للصفحة الرئيسية
 app.get("/", (req, res) => {
@@ -163,4 +165,5 @@ setInterval(() => {
   });
 }, KEEP_ALIVE_INTERVAL);
 
+// Updated doctor and nurse provider clean responses
 module.exports = app;

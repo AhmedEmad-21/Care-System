@@ -71,29 +71,14 @@ async function findByNameWithOptionalGeo(Model, filter, { lat, long } = {}) {
         }
       },
       {
-        $lookup: {
-          from: 'users',
-          localField: 'userId',
-          foreignField: '_id',
-          as: 'userId'
-        }
-      },
-      {
-        $unwind: {
-          path: '$userId',
-          preserveNullAndEmptyArrays: true
-        }
-      },
-      {
         $project: {
-          'userId.passwordHash': 0,
-          'userId.resetPasswordTokenHash': 0
+          userId: 0
         }
       }
     ]);
   }
 
-  return Model.find(filter).populate('userId', USER_POPULATE_FIELDS).lean();
+  return Model.find(filter).select('-userId').lean();
 }
 
 module.exports = {

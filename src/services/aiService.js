@@ -34,10 +34,34 @@ const getDailyAiUsage = async (userId) => {
   return user;
 };
 
-const openai = new OpenAI({
-  baseURL: 'https://api.groq.com/openai/v1',
-  apiKey: process.env.AI_API_KEY,
-});
+const getOpenAIClient = () => {
+  const apiKey = (process.env.AI_API_KEY || '').trim();
+  return new OpenAI({
+    baseURL: process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1',
+    apiKey,
+  });
+};
+
+const classifySpecialtyFallback = (symptoms) => {
+  const s = String(symptoms || '').toLowerCase();
+
+  if (/قلب|صدرية|خفقان|نبض|شريان|ضغط مرتفع|ذبحة/.test(s)) return 'القلب والأوعية الدموية';
+  if (/عظم|مفصل|كسر|ركبة|غضروف|ظهر|فقرات|التواء|عمود فقري/.test(s)) return 'العظام والمفاصل والعمود الفقري';
+  if (/مغص|معدة|قولون|إسهال|امساك|ترجيع|قيء|كبد|مرارة|حموضة|هضم/.test(s)) return 'باطنة';
+  if (/طفل|رضيع|مولود|سخونة طفل|تطعيم/.test(s)) return 'أطفال وحديثي الولادة';
+  if (/حمل|ولادة|دورة|مبيض|رحم|جنين/.test(s)) return 'أمراض النساء والتوليد وتأخر الإنجاب';
+  if (/تنفس|كحة|سعال|رئة|بلغم|ضيق تنفس|ربو|حساسية صدر/.test(s)) return 'الصدر والجهاز التنفسي';
+  if (/مخ|أعصاب|صرع|شلل|تنميل|دوخة|صداع|نفسي|اكتئاب|قلق/.test(s)) return 'المخ والأعصاب والطب النفسي';
+  if (/أنف|أذن|حنجرة|لوز|احتقان|جيوب أنفية|سمع/.test(s)) return 'الأنف والأذن والحنجرة';
+  if (/جلد|حبوب|طفح|حكة|بهاق|صدفية|شعر|أكزيما/.test(s)) return 'الجلدية والتناسلية والتجميل';
+  if (/عين|رمد|قرنية|شبكية|حول|رؤية|زغللة/.test(s)) return 'الرمد';
+  if (/سنان|أسنان|ضرس|لثة|تقويم|حشو/.test(s)) return 'الأسنان';
+  if (/كلى|مسالك|بول|حصوة|بروستاتا|حرقان بول/.test(s)) return 'الكلى والمسالك البولية';
+  if (/علاج طبيعي|تأهيل|جلطة|تصلب/.test(s)) return 'العلاج الطبيعي والتأهيل';
+  if (/جراحة|زائدة|ورم|فتق|بواسير|ناسور/.test(s)) return 'الجراحة العامة وجراحة المناظير';
+
+  return 'باطنة';
+};
 
 const getSuggestedSpecialty = async (patientId, symptoms) => {
   const patient = await getDailyAiUsage(patientId);
@@ -47,9 +71,10 @@ const getSuggestedSpecialty = async (patientId, symptoms) => {
   }
 
   try {
+    const openai = getOpenAIClient();
     const completion = await openai.chat.completions.create({
-      model: process.env.AI_MODEL || 'llama-3.1-8b-instant',
-messages: [
+      model: process.env.AI_MODEL || 'openai/gpt-oss-120b',
+      messages: [
         {
           role: 'system',
           content: 'أنت مساعد طبي احترافي وموثوق في النظام الصحي المصري. حلّل أعراض المريض بدقة وحدّد التخصص الطبي الأنسب من قائمة محددة فقط.',
@@ -85,11 +110,17 @@ messages: [
       throw error;
     }
 
-    // طباعة الخطأ كاملاً في التيرمنال لمعرفة السبب الدقيق
-    console.error('❌ Groq API Full Error Details:', error.response ? error.response.data : error);
-    
-    // إرجاع تفاصيل الخطأ الحقيقي مباشرة لتبان عندك في الـ Response أو التيرمنال
-    throw new ServiceUnavailableError(`AI Error: ${error.message}`);
+    console.error('⚠️ Groq AI API error, using smart medical fallback:', error.message);
+
+    // استخدام المساعد الطبي الذكي كـ Fallback عند تعذر الاتصال بـ Groq أو خطأ في الـ API Key
+    const fallbackSpecialty = classifySpecialtyFallback(symptoms);
+
+    patient.aiAnalysisAttempts += 1;
+    patient.lastAiAnalysisDate = new Date();
+    await patient.save();
+
+    console.log('ℹ️ Suggested specialty via medical fallback:', fallbackSpecialty);
+    return fallbackSpecialty;
   }
 };
 
