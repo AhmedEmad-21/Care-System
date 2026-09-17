@@ -107,7 +107,7 @@ const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, req
     }
   }
 
-  return Booking.create({
+  const booking = await Booking.create({
     patientId,
     doctorId: doctorId || null,
     nurseId: nurseId || null,
@@ -118,6 +118,50 @@ const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, req
     totalCost,
     status: BOOKING_STATUSES.PENDING,
   });
+
+  // إرسال إشعار فوري وتلقائي للطبيب أو الممرض
+  try {
+    const patientUser = await User.findById(patientId).select('name phoneNumber').lean();
+    const patientName = patientUser?.name || 'مريض';
+
+    let targetUserId = null;
+    if (doctorId) {
+      const doctorDoc = await Doctor.findById(doctorId).select('userId phoneNumber name').lean();
+      if (doctorDoc?.userId) {
+        targetUserId = doctorDoc.userId;
+      } else if (doctorDoc?.phoneNumber) {
+        const docUser = await User.findOne({ phoneNumber: doctorDoc.phoneNumber }).select('_id').lean();
+        targetUserId = docUser?._id;
+      }
+    } else if (nurseId) {
+      const nurseDoc = await Nurse.findById(nurseId).select('userId phoneNumber name').lean();
+      if (nurseDoc?.userId) {
+        targetUserId = nurseDoc.userId;
+      } else if (nurseDoc?.phoneNumber) {
+        const nurseUser = await User.findOne({ phoneNumber: nurseDoc.phoneNumber }).select('_id').lean();
+        targetUserId = nurseUser?._id;
+      }
+    }
+
+    if (targetUserId) {
+      await sendNotificationToUser({
+        userId: targetUserId,
+        title: 'طلب حجز جديد 🩺',
+        body: `لديك طلب حجز جديد من المريض (${patientName}). يرجى الدخول لتحديد موعد الكشف وتأكيد الحجز.`,
+        type: 'booking',
+        data: {
+          bookingId: String(booking._id),
+          bookingNumber: String(booking.bookingNumber || ''),
+          patientId: String(patientId),
+          type: doctorId ? 'doctor' : 'nurse'
+        }
+      });
+    }
+  } catch (notifErr) {
+    console.error('Failed to send booking notification to provider:', notifErr.message);
+  }
+
+  return booking;
 };
 
 const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLocation, appointmentTime }) => {
@@ -149,7 +193,7 @@ const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLoca
     throw new BadRequestError('مطلوب تحديد الموقع لإرسال الممرض ولا يوجد موقع مسجل للحساب');
   }
 
-  return NursingBooking.create({
+  const booking = await NursingBooking.create({
     patientId,
     nurseId,
     serviceId,
@@ -158,6 +202,37 @@ const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLoca
     totalCost: nurse.servicePrice || 0,
     status: BOOKING_STATUSES.PENDING,
   });
+
+  // إرسال إشعار فوري وتلقائي للممرض
+  try {
+    const patientUser = await User.findById(patientId).select('name phoneNumber').lean();
+    const patientName = patientUser?.name || 'مريض';
+
+    let targetUserId = nurse.userId;
+    if (!targetUserId && nurse.phoneNumber) {
+      const nurseUser = await User.findOne({ phoneNumber: nurse.phoneNumber }).select('_id').lean();
+      targetUserId = nurseUser?._id;
+    }
+
+    if (targetUserId) {
+      await sendNotificationToUser({
+        userId: targetUserId,
+        title: 'طلب خدمة تمريضية جديد 🩺',
+        body: `لديك طلب خدمة تمريضية جديد من المريض (${patientName}). يرجى الدخول لتحديد الموعد وتأكيد الحجز.`,
+        type: 'booking',
+        data: {
+          bookingId: String(booking._id),
+          patientId: String(patientId),
+          serviceId: String(serviceId),
+          type: 'nursing'
+        }
+      });
+    }
+  } catch (notifErr) {
+    console.error('Failed to send nursing booking notification to provider:', notifErr.message);
+  }
+
+  return booking;
 };
 
 const listPendingBookings = async ({ limit = 50 } = {}) => {
