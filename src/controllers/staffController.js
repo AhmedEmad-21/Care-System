@@ -317,9 +317,113 @@ const nursesStatus = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: nurses });
 });
 
+// 8.5 إحصائيات وتحليلات شاملة للوحة تحكم الـ Staff
 const analytics = asyncHandler(async (req, res) => {
-  const [aggTotal, byStatus] = await Promise.all([Booking.countDocuments(), Booking.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }])]);
-  return res.json({ success: true, data: { totalBookings: aggTotal, byStatus } });
+  const [
+    totalDoctors,
+    activeDoctors,
+    totalNurses,
+    activeNurses,
+    totalPatients,
+    totalBookingsCount,
+    totalNursingBookingsCount,
+    bookingStatusAgg,
+    nursingStatusAgg,
+    pendingSettledDoctor,
+    pendingSettledNursing,
+    completedDoctorBookings,
+    completedNursingBookings
+  ] = await Promise.all([
+    Doctor.countDocuments(),
+    Doctor.countDocuments({ isAvailable: true }),
+    Nurse.countDocuments(),
+    Nurse.countDocuments({ isAvailable: true }),
+    User.countDocuments({ role: 'Patient' }),
+    Booking.countDocuments(),
+    NursingBooking.countDocuments(),
+    Booking.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+    NursingBooking.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+    Booking.countDocuments({ status: 'completed', isSettled: false }),
+    NursingBooking.countDocuments({ status: 'completed', isSettled: false }),
+    Booking.find({ status: 'completed' })
+      .populate('doctorId', 'commissionRate')
+      .populate('nurseId', 'commissionRate')
+      .select('totalCost isSettled doctorId nurseId')
+      .lean(),
+    NursingBooking.find({ status: 'completed' })
+      .populate('nurseId', 'commissionRate')
+      .select('totalCost isSettled nurseId')
+      .lean()
+  ]);
+
+  const totalBookings = totalBookingsCount + totalNursingBookingsCount;
+  const pendingSettlementsCount = pendingSettledDoctor + pendingSettledNursing;
+
+  const statusMap = {
+    pending: 0,
+    confirmed: 0,
+    completed: 0,
+    cancelled: 0,
+    rejected: 0
+  };
+
+  [...bookingStatusAgg, ...nursingStatusAgg].forEach(item => {
+    if (item._id) {
+      statusMap[item._id] = (statusMap[item._id] || 0) + item.count;
+    }
+  });
+
+  const byStatus = Object.keys(statusMap).map(status => ({
+    _id: status,
+    count: statusMap[status]
+  }));
+
+  let totalRevenue = 0;
+  let totalPlatformCommission = 0;
+  let settledPlatformCommission = 0;
+  let pendingPlatformCommission = 0;
+
+  [...completedDoctorBookings, ...completedNursingBookings].forEach(b => {
+    const cost = b.totalCost || 0;
+    const provider = b.doctorId || b.nurseId;
+    const rate = provider?.commissionRate || 10;
+    const commission = (cost * rate) / 100;
+
+    totalRevenue += cost;
+    totalPlatformCommission += commission;
+
+    if (b.isSettled) {
+      settledPlatformCommission += commission;
+    } else {
+      pendingPlatformCommission += commission;
+    }
+  });
+
+  return res.json({
+    success: true,
+    data: {
+      totalBookings,
+      completedBookings: statusMap.completed || 0,
+      pendingBookings: statusMap.pending || 0,
+      confirmedBookings: statusMap.confirmed || 0,
+      cancelledBookings: statusMap.cancelled || 0,
+      totalDoctors,
+      activeDoctors,
+      totalNurses,
+      activeNurses,
+      totalPatients,
+      pendingSettlementsCount,
+      byStatus,
+      financials: {
+        totalRevenue,
+        totalPlatformCommission,
+        settledPlatformCommission,
+        pendingPlatformCommission,
+        settledAmount: settledPlatformCommission,
+        pendingSettlementAmount: pendingPlatformCommission
+      }
+    }
+  });
 });
 
 const toggleProviderStatus = asyncHandler(async (req, res) => {

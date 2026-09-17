@@ -747,21 +747,53 @@ Authorization: Bearer <accessToken>
 
 ## 7. التحليلات وسجلات المراقبة (Analytics & Audit Logs)
 
-### 7.1 تحليلات إحصائيات المنصة العامة
+### 7.1 تحليلات وإحصائيات لوحة التحكم (Platform Analytics)
 * **Method & Path:** `GET /api/staff/analytics`
-* **Auth:** Required (`Admin` Only)
+* **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** تُرجع الإحصائيات الشاملة للكروت العلوية في صفحة الـ Dashboard الرئيسية:
+  * `totalBookings`: إجمالي الحجوزات (الطبية والتمريضية).
+  * `completedBookings`: الحجوزات المكتملة.
+  * `pendingBookings`, `confirmedBookings`, `cancelledBookings`: تفصيل الحالات.
+  * `totalDoctors`: إجمالي الأطباء المسجلين.
+  * `activeDoctors`: الأطباء المتاحين حالياً.
+  * `totalNurses`: إجمالي الممرضين المسجلين.
+  * `activeNurses`: الممرضين المتاحين حالياً.
+  * `totalPatients`: إجمالي المرضى المسجلين في المنصة.
+  * `pendingSettlementsCount`: عدد الحجوزات المكتملة المعلقة التي لم تسو بعد.
+  * `byStatus`: توزيع الحجوزات حسب الحالة لكافة الحالات.
+  * `financials`: ملخص مالي كامل لأرباح وعمولات المنصة والتسويات.
 
 #### 📤 Response Example (200 OK):
 ```json
 {
   "success": true,
   "data": {
-    "totalBookings": 150,
+    "totalBookings": 31,
+    "completedBookings": 1,
+    "pendingBookings": 30,
+    "confirmedBookings": 0,
+    "cancelledBookings": 0,
+    "totalDoctors": 22,
+    "activeDoctors": 22,
+    "totalNurses": 26,
+    "activeNurses": 26,
+    "totalPatients": 13,
+    "pendingSettlementsCount": 0,
     "byStatus": [
-      { "_id": "completed", "count": 110 },
-      { "_id": "pending", "count": 25 },
-      { "_id": "cancelled", "count": 15 }
-    ]
+      { "_id": "pending", "count": 30 },
+      { "_id": "confirmed", "count": 0 },
+      { "_id": "completed", "count": 1 },
+      { "_id": "cancelled", "count": 0 },
+      { "_id": "rejected", "count": 0 }
+    ],
+    "financials": {
+      "totalRevenue": 500,
+      "totalPlatformCommission": 50,
+      "settledPlatformCommission": 50,
+      "pendingPlatformCommission": 0,
+      "settledAmount": 50,
+      "pendingSettlementAmount": 0
+    }
   }
 }
 ```
