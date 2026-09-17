@@ -40,9 +40,28 @@ if (process.env.REDIS_URL) {
 app.disable("x-powered-by");
 if (config.appConfig.trustProxy) app.set("trust proxy", 1);
 
+// Allowed Origins for CORS
+const allowedOrigins = Array.from(new Set([
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5000',
+  'http://localhost:5173',
+  'https://staff-dashboard-woad.vercel.app',
+  ...(process.env.TRUSTED_ORIGINS ? process.env.TRUSTED_ORIGINS.split(',').map(s => s.trim()) : [])
+])).filter(Boolean);
+
 // Middleware
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    return callback(null, false);
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   credentials: true,
