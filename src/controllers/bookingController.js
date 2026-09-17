@@ -43,8 +43,35 @@ const myBookings = asyncHandler(async (req, res) => {
   return res.json({ success: true, data: { doctorBookings, nursingBookings } });
 });
 
+const getBookingByIdHandler = asyncHandler(async (req, res) => {
+  const patientId = req.user.id || req.user._id;
+  const { id } = req.params;
+
+  let booking = await Booking.findOne({ _id: id, patientId })
+    .populate('doctorId', 'name specialization basePrice profileImage rating totalReviews address phoneNumber')
+    .populate('nurseId', 'name phoneNumber profileImage rating totalReviews')
+    .lean();
+
+  let type = 'doctor';
+
+  if (!booking) {
+    booking = await NursingBooking.findOne({ _id: id, patientId })
+      .populate('nurseId', 'name phoneNumber profileImage rating totalReviews address')
+      .populate('serviceId', 'name description basePrice')
+      .lean();
+    type = 'nursing';
+  }
+
+  if (!booking) {
+    return res.status(404).json({ success: false, message: 'الحجز غير موجود أو لا تملك صلاحية للوصول إليه' });
+  }
+
+  return res.json({ success: true, data: { ...booking, bookingType: type } });
+});
+
 module.exports = { 
   createDoctorBookingHandler, 
   createNursingBookingHandler, 
-  myBookings 
+  myBookings,
+  getBookingByIdHandler
 };

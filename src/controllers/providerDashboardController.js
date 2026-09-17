@@ -11,7 +11,7 @@ const {
 const listBookings = asyncHandler(async (req, res) => {
   const { status, date } = req.query;
   const bookings = await getProviderBookings({
-    userId: req.user._id,
+    userId: req.user.id || req.user._id,
     status,
     date
   });
@@ -29,7 +29,7 @@ const setBookingSchedule = asyncHandler(async (req, res) => {
   const { appointmentTime, status } = req.body;
 
   const updatedBooking = await scheduleBooking({
-    userId: req.user._id,
+    userId: req.user.id || req.user._id,
     bookingId: id,
     appointmentTime,
     status
@@ -48,7 +48,7 @@ const changeBookingStatus = asyncHandler(async (req, res) => {
   const { status } = req.body;
 
   const updatedBooking = await updateBookingStatusService({
-    userId: req.user._id,
+    userId: req.user.id || req.user._id,
     bookingId: id,
     status
   });
@@ -65,7 +65,7 @@ const listSettlements = asyncHandler(async (req, res) => {
   const { startDate, endDate, isSettled } = req.query;
 
   const result = await getProviderSettlements({
-    userId: req.user._id,
+    userId: req.user.id || req.user._id,
     startDate,
     endDate,
     isSettled
@@ -84,7 +84,7 @@ const updateOffDays = asyncHandler(async (req, res) => {
   const { offDays } = req.body;
 
   const provider = await updateOffDaysService({
-    userId: req.user._id,
+    userId: req.user.id || req.user._id,
     offDays
   });
 

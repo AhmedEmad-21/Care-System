@@ -360,8 +360,47 @@ Doctors and nurses now return these extra fields in multiple endpoints:
 - `doctorId.totalReviews`
 - `nurseId.rating`
 - `nurseId.totalReviews`
+- `status`: `pending` (قيد الانتظار), `confirmed` (مؤكد), `completed` (مكتمل), `cancelled` (ملغي)
+- `appointmentTime`: ISO 8601 Date string. Upon provider confirmation, contains the exact scheduled time with hour and minute.
 
 Use those fields directly in booking history cards.
+
+### 7.4 Booking Details (Single Booking)
+
+**Endpoint**
+
+- `GET /api/bookings/:id`
+- Auth required
+
+**Description**
+
+Fetches full details of a specific booking for the authenticated patient (doctor or nursing booking). Includes provider details, current status, and exact `appointmentTime`.
+
+**Response example**
+
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "64a7b2c1f1a2b3c4d5e6f7a1",
+    "bookingNumber": 1005,
+    "status": "confirmed",
+    "appointmentTime": "2026-09-25T17:30:00.000Z",
+    "totalCost": 300,
+    "doctorId": {
+      "_id": "64a7b2c1f1a2b3c4d5e6f7a2",
+      "name": "د. أحمد محمود",
+      "specialization": "باطنة",
+      "basePrice": 300,
+      "phoneNumber": "01012345678",
+      "address": "الفيوم - شارع الجمهورية"
+    },
+    "bookingType": "doctor",
+    "createdAt": "2026-09-20T12:00:00.000Z",
+    "updatedAt": "2026-09-20T14:30:00.000Z"
+  }
+}
+```
 
 ---
 

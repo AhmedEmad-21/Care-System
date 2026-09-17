@@ -19,6 +19,10 @@ module.exports = async function authMW(req, res, next) {
         return next(new UnauthorizedError('Unauthorized: access token required'));
       }
     req.user = verified;
+    if (req.user) {
+      if (req.user.id && !req.user._id) req.user._id = req.user.id;
+      if (req.user._id && !req.user.id) req.user.id = req.user._id;
+    }
     return next();
   } catch (err) {
     if (err?.name === 'TokenExpiredError' || err?.name === 'JsonWebTokenError' || err?.status === 401) {
