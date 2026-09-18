@@ -31,6 +31,7 @@ module.exports = {
         minimum: 0, 
         maximum: 6 
       } 
-    }
+    },
+    description: { type: 'string' }
   }
 };

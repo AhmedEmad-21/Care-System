@@ -5,8 +5,8 @@ const NursingBooking = require('../models/nursingBookingModel');
 const Doctor = require('../models/doctorModel');
 const { createDoctorBooking, createNursingBooking } = require('../services/bookingService');
 
-const DOCTOR_POPULATE_FIELDS = 'name specialization basePrice urgentPrice profileImage rating totalReviews address phoneNumber workingHours offDays location';
-const NURSE_POPULATE_FIELDS = 'name phoneNumber profileImage rating totalReviews address';
+const DOCTOR_POPULATE_FIELDS = 'name specialization description basePrice urgentPrice profileImage rating totalReviews address phoneNumber workingHours offDays location';
+const NURSE_POPULATE_FIELDS = 'name description phoneNumber profileImage rating totalReviews address';
 
 const formatDoctorObj = (doc) => {
   if (!doc) return doc;
@@ -14,6 +14,7 @@ const formatDoctorObj = (doc) => {
     _id: doc._id,
     name: doc.name,
     specialization: doc.specialization,
+    description: doc.description || '',
     basePrice: doc.basePrice != null ? Number(doc.basePrice) : 0,
     urgentPrice: (doc.urgentPrice != null && Number(doc.urgentPrice) > 0)
       ? Number(doc.urgentPrice)

@@ -383,6 +383,27 @@ const notifyStaffOfSupportMessage = async ({ senderUser, message, subject, booki
     }).catch(err => console.error('⚠️ FCM Staff push notification error:', err.message));
   }
 
+  // مزامنة فورية في كوليكشن notifications على Firestore لتنبيه لوحة تحكم الاستاف (Admin Dashboard) في نفس اللحظة
+  try {
+    const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+    const firestore = getFirestore();
+    await firestore.collection('notifications').add({
+      title,
+      body: bodyText,
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+      link: '/dashboard/support',
+      type: 'support_message',
+      senderRole: senderUser.role || 'Patient',
+      senderName: senderDisplayName,
+      senderId: String(senderUser._id || senderUser.id),
+      bookingNumber: bookingNumber ? String(bookingNumber) : '',
+      message: String(message)
+    });
+  } catch (fsErr) {
+    console.error('⚠️ Firestore Staff notification error:', fsErr.message);
+  }
+
   return {
     success: true,
     recipientCount: recipientIds.length,

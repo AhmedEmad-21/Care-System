@@ -48,10 +48,17 @@ const resolveCanonicalSpecialty = async (specialty) => {
   return aliasMatch?.canonical || 'General Medicine';
 };
 
+const { getTodayDateString } = require('../utils/dateUtils');
+
 const buildDoctorQuery = ({ specialty, coordinates, maxDistanceMeters }) => {
+  const today = new Date();
+  const todayDay = today.getDay();
+  const todayStr = getTodayDateString(today);
+
   const query = {
     isAvailable: true,
-    offDays: { $ne: new Date().getDay() },
+    offDays: { $ne: todayDay },
+    unavailableDates: { $ne: todayStr },
   };
 
   if (specialty) query.specialization = specialty;
@@ -127,7 +134,9 @@ const findMatchingDoctors = async ({ symptoms, requestLocation, maxDistanceMeter
 // دالة جلب الأطباء البدلاء مع الترتيب الجغرافي (الأقرب للأبعد) واستبعاد الدكتور غير المتاح
 const getAlternativeDoctors = async ({ sessionId, excludedDoctorId, requestLocation, appointmentDate, specialty }) => {
   const session = sessionId ? await AISession.findById(sessionId) : null;
-  const dayOfWeek = appointmentDate ? new Date(appointmentDate).getDay() : new Date().getDay();
+  const targetDate = appointmentDate ? new Date(appointmentDate) : new Date();
+  const dayOfWeek = targetDate.getDay();
+  const targetDateStr = getTodayDateString(targetDate);
   
   let doctorIdsFilter = session ? { _id: { $in: session.matchedDoctorIds, $ne: excludedDoctorId } } : { _id: { $ne: excludedDoctorId } };
 
@@ -147,7 +156,8 @@ const getAlternativeDoctors = async ({ sessionId, excludedDoctorId, requestLocat
           query: {
             ...doctorIdsFilter,
             isAvailable: true,
-            offDays: { $ne: dayOfWeek }
+            offDays: { $ne: dayOfWeek },
+            unavailableDates: { $ne: targetDateStr }
           }
         }
       }
@@ -158,7 +168,8 @@ const getAlternativeDoctors = async ({ sessionId, excludedDoctorId, requestLocat
     return await Doctor.find({
       ...doctorIdsFilter,
       isAvailable: true,
-      offDays: { $ne: dayOfWeek }
+      offDays: { $ne: dayOfWeek },
+      unavailableDates: { $ne: targetDateStr }
     }).lean();
   }
 };

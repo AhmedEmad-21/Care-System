@@ -1,57 +1,121 @@
-إليك التوثيق الفني الخاص بالشات ودعم العملاء موظهاً ومنسقاً خصيصاً لفريق الفلاتر (جاهز للنسخ المباشر):
+# 💬 دليل شات ودعم العملاء لتطبيقات الموبايل (CHAT_FLUTTER_GUIDE.md)
+
+> **مخصص لفريق الفلاتر (Flutter):** يوضح هذا المستند الآلية الموحدة لنظام شات الدعم الفني عبر **Firebase Firestore** لجميع فئات المستخدمين (**أطباء، ممرضين، ومرضى**)، وكيفية إرسال التنبيهات اللحظية لتظهر فوراً في جرس إشعارات لوحة تحكم الاستاف (Staff Dashboard).
 
 ---
 
-# 💬 Customer Support & Chat System Integration Guide (`CHAT_FLUTTER_GUIDE.md`)
+## 1. الهيكل المعتمد لقاعدة بيانات Firestore
 
-> **إلى فريق الفلاتر:** يوضح هذا المستند الآلية المطلوبة لتنفيذ نظام الشات الخاص بدعم العملاء عبر **Firebase Firestore** لكي تظهر المحادثات في داش بورد الستاف (Staff Dashboard) ويتمكنوا من الرد على المستخدمين لحظياً.
-
----
-
-## 1. الهيكل المقترح لقاعدة بيانات Firestore (Firestore Structure)
-
-لكي تظهر الشاتات بشكل مرتب في لوحة تحكم الستاف وتعمل بالتحديث اللحظي (`Real-time`)، يجب اعتماد الهيكل التالي:
-
-* **المجموعة الرئيسية (Collection):** `chats`
-* **معرف الوثيقة (Document ID):** `chatId` (يُفضل أن يكون هو نفسه `userId` الخاص بالمريض أو معرف فريد للمحادثة).
+### أ. المجموعة الرئيسية (Collection: `chats`)
+* **معرف الوثيقة (Document ID):** `chatId` (أو `support_${userId}`).
 * **حقول الوثيقة (Chat Metadata):**
-* `userId`: معرف المريض (String).
-* `userName`: اسم المريض (String).
-* `userImage`: صورة المريض الشخصية إن وجدت (String).
-* `lastMessage`: نص آخر رسالة أُرسلت (String).
-* `updatedAt`: وقت آخر رسالة للترتيب (Timestamp).
-* `status`: حالة المحادثة مثل `waiting` (بانتظار الرد) أو `active` أو `closed` (String).
-* `assignedStaffId`: معرف موظف الدعم الفني الذي رد على الشات (String - اختياري).
+  * `userId`: معرف المستخدم (String - إجباري).
+  * `userName`: اسم المستخدم (String - إجباري، مثل: "د. حازم" أو "محمد أحمد").
+  * `userRole`: دور المستخدم (String - إجباري: `'Doctor'` أو `'Nurse'` أو `'Patient'`).
+  * `userImage`: صورة المستخدم الشخصية إن وجدت (String - اختياري).
+  * `lastMessage`: نص آخر رسالة أُرسلت (String).
+  * `updatedAt`: وقت آخر رسالة للترتيب (Timestamp: `FieldValue.serverTimestamp()`).
+  * `status`: حالة المحادثة (`'pending'` بانتظار رد الاستاف، أو `'active'` قيد المحادثة، أو `'closed'`).
 
+### ب. المجموعة الفرعية للرسائل (Sub-collection: `messages`)
+* **المسار:** `chats/{chatId}/messages`
+* **حقول الرسالة:**
+  * `senderId`: معرف المرسل (`userId` للمستخدم، أو `'admin'` للاستاف).
+  * `receiverId`: معرف المستلم (`'admin'` أو `userId`).
+  * `senderRole`: دور المرسل (`'Doctor'` | `'Nurse'` | `'Patient'` | `'Staff'`).
+  * `message`: نص الرسالة (String).
+  * `timestamp`: وقت الإرسال (`FieldValue.serverTimestamp()`).
 
-
-
-* **المجموعة الفرعية داخل كل شات (Sub-collection):** `messages`
-* **حقول رسالة الشات:**
-* `senderId`: معرف المرسل (سواء كان المريض أو الستاف) (String).
-* `senderRole`: نوع المرسل مثل `patient` أو `staff` (String).
-* `text`: نص الرسالة (String).
-* `createdAt`: وقت الإرسال (Timestamp).
-
-
-
-
+### ج. مجموعة إشعارات الاستاف (Collection: `notifications`)
+لكي يظهر إشعار فوري في جرس لوحة تحكم الاستاف مع بادج ملون وصوت التنبيه، يتم إنشاء وثيقة جديدة في مجموعة `notifications`:
+* `title`: `رسالة جديدة من ${roleInArabic}: ${userName}` (مثلاً: "رسالة جديدة من طبيب: د. أحمد").
+* `body`: نص الرسالة أو ملخصها.
+* `read`: `false` (Boolean).
+* `createdAt`: `FieldValue.serverTimestamp()`.
+* `link`: `/dashboard/support?chatId=${chatId}` (رابط التوجيه المباشر للشات).
+* `chatId`: معرف المحادثة.
+* `senderRole`: دور المستخدم (`'Doctor'` | `'Nurse'` | `'Patient'`).
+* `senderName`: اسم المستخدم.
+* `type`: `'support_message'`.
 
 ---
 
-## 2. متطلبات التنفيذ في تطبيق الفلاتر (Flutter Implementation)
+## 2. كود الإرسال المتكامل في تطبيق Flutter (Dart)
 
-### أولاً: شاشة قائمة المحادثات في داش بورد الستاف (Staff Chat List Screen)
+```dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-* **استخدام StreamBuilder:** يجب الاستماع لمجموعة `chats` في Firestore لكي تحدث القائمة تلقائياً فور وصول رسالة جديدة من أي مريض.
-* **الترتيب:** ترتيب المحادثات تنازلياً بناءً على حقل `updatedAt` بحيث تظهر المحادثات الجديدة أو التي استقبلت رداً حديثاً في الأعلى.
-* **البيانات المعروضة:** عرض اسم المريض، آخر رسالة (`lastMessage`), ووقت الإرسال.
+Future<void> sendMessageToSupport({
+  required String chatId,
+  required String userId,
+  required String userName,
+  required String userRole, // 'Doctor' | 'Nurse' | 'Patient'
+  required String messageText,
+}) async {
+  final firestore = FirebaseFirestore.instance;
+  final trimmedText = messageText.trim();
 
-### ثانياً: شاشة المحادثة الفردية (Chat Room Screen)
+  if (trimmedText.isEmpty) return;
 
-* **الاستماع للرسائل:** عند الضغط على محادثة مريض معين، يتم فتح شاشة الدردشة وجلب الرسائل من الـ Sub-collection المسمى `messages` الخاصة بهذا الـ `chatId` مرتبة تصاعدياً حسب `createdAt` باستخدام `StreamBuilder`.
-* **إرسال رسالة جديدة:**
-* إضافة وثيقة جديدة داخل مجموعة `messages` الخاصة بالمحادثة.
-* تحديث حقل `lastMessage` و `updatedAt` في وثيقة الـ Chat الرئيسية ليتم تحديث القائمة العامة تلقائياً.
-* تحديث حالة الشات إلى `active` وتثبيت `assignedStaffId` بمجرد أن يقوم موظف الستاف بالرد لأول مرة.
+  // تحديد المسمى العربي بحسب الدور
+  final String roleInArabic = switch (userRole) {
+    'Doctor' => 'طبيب',
+    'Nurse' => 'ممرض',
+    _ => 'مريض',
+  };
 
+  try {
+    // 1. إضافة الرسالة في مجموعة messages
+    await firestore.collection('chats').doc(chatId).collection('messages').add({
+      'senderId': userId,
+      'receiverId': 'admin',
+      'message': trimmedText,
+      'senderRole': userRole,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    // 2. تحديث وثيقة الشات الرئيسية
+    await firestore.collection('chats').doc(chatId).set({
+      'userId': userId,
+      'userName': userName,
+      'userRole': userRole,
+      'lastMessage': trimmedText,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'status': 'pending', // بانتظار رد الاستاف
+    }, SetOptions(merge: true));
+
+    // 3. إنشاء إشعار فوري في مجموعة notifications ليظهر لحظياً للاستاف في الداش بورد
+    await firestore.collection('notifications').add({
+      'title': 'رسالة جديدة من $roleInArabic: $userName',
+      'body': trimmedText.length > 80 ? '${trimmedText.substring(0, 80)}...' : trimmedText,
+      'read': false,
+      'createdAt': FieldValue.serverTimestamp(),
+      'link': '/dashboard/support?chatId=$chatId',
+      'chatId': chatId,
+      'senderRole': userRole,
+      'senderName': userName,
+      'type': 'support_message',
+    });
+
+  } catch (e) {
+    print('Error sending message and notification to support: $e');
+    rethrow;
+  }
+}
+```
+
+---
+
+## 3. البديل عبر الـ REST API (اختياري)
+إذا رغب التطبيق في إرسال استفسار عبر الـ HTTP Backend بدلاً من Firestore المباشر:
+* **Endpoint:** `POST /api/support/message` (أو `POST /api/notifications/support-message`)
+* **Headers:** `Authorization: Bearer <token>`
+* **Body:**
+  ```json
+  {
+    "message": "نص الرسالة أو المشكلة",
+    "subject": "موضوع المشكلة (اختياري)",
+    "bookingNumber": 1002
+  }
+  ```
+* يتولى السيرفر تلقائياً إرسال إشعارات FCM لجميع أجهزة الاستاف ومزامنة الإشعار على Firestore في نفس اللحظة!

@@ -33,5 +33,10 @@ module.exports = {
       items: { type: 'integer', minimum: 0, maximum: 6 },
     },
     isAvailable: { type: 'boolean' },
+    description: { type: 'string' },
+    unavailableDates: {
+      type: 'array',
+      items: { type: 'string' }
+    },
   },
 };

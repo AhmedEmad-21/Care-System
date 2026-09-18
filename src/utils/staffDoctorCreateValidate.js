@@ -49,6 +49,7 @@ module.exports = {
       type: 'object',
       properties: { start: { type: 'string' }, end: { type: 'string' } }
     },
-    offDays: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 6 } }
+    offDays: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 6 } },
+    description: { type: 'string' }
   }
 };

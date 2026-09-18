@@ -20,6 +20,8 @@ const nurseSchema = new mongoose.Schema(
     totalReviews: { type: Number, default: 0, min: 0 },
     isAvailable: { type: Boolean, default: true },
     offDays: { type: [Number], default: [] },
+    description: { type: String, required: false, default: '', trim: true },
+    unavailableDates: { type: [String], default: [] },
     addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
   },
   { timestamps: true }

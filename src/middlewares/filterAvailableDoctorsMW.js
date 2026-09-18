@@ -32,14 +32,18 @@ const extractLocation = (req) => {
     return parseCoordinatePair(queryLocation);
 };
 
+const { getTodayDateString } = require('../utils/dateUtils');
+
 const filterAvailableDoctorsMW = (req, res, next) => {
     const today = new Date().getDay();
+    const todayStr = getTodayDateString();
     const coordinates = extractLocation(req);
 
     req.filterCriteria = {
         ...(req.filterCriteria || {}),
         isAvailable: true,
         offDays: { $ne: today },
+        unavailableDates: { $ne: todayStr },
     };
 
     if (coordinates) {

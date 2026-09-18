@@ -50,11 +50,17 @@ function buildNameFilter(rawName) {
   };
 }
 
+const { getTodayDateString } = require('./dateUtils');
+
 function withOptionalDateFilter(filter, date) {
-  if (!date) return filter;
+  const targetDate = date ? new Date(date) : new Date();
+  const targetDay = targetDate.getDay();
+  const targetDateStr = getTodayDateString(targetDate);
+
   return {
     ...filter,
-    offDays: { $ne: new Date(date).getDay() }
+    offDays: { $ne: targetDay },
+    unavailableDates: { $ne: targetDateStr }
   };
 }
 

@@ -6,15 +6,40 @@ const {
   withOptionalDateFilter
 } = require('../utils/nameSearch');
 
+const { getTodayDateString } = require('../utils/dateUtils');
+
 const formatNurse = (doc) => {
   if (!doc) return doc;
+  const todayStr = getTodayDateString();
+  const todayDay = new Date().getDay();
+  const unavailableDates = Array.isArray(doc.unavailableDates) ? doc.unavailableDates : [];
+  const offDays = Array.isArray(doc.offDays) ? doc.offDays : [];
+  const isAvailableToday = Boolean(doc.isAvailable) &&
+    !unavailableDates.includes(todayStr) &&
+    !offDays.includes(todayDay);
+
   const { userId, ...rest } = doc;
-  return rest;
+  return {
+    ...rest,
+    description: doc.description || '',
+    isAvailableToday
+  };
 };
 
-// 1. عرض الممرضين (القائمة الكاملة)
+// 1. عرض الممرضين (القائمة الكاملة مع فلترة المتاحين اليوم أو في تاريخ محدد)
 const listNurses = asyncHandler(async (req, res) => {
-  const nurses = await Nurse.find({ isAvailable: true }).select('-userId').lean();
+  const { date } = req.query;
+  const targetDate = date ? new Date(date) : new Date();
+  const targetDateStr = getTodayDateString(targetDate);
+  const targetDay = targetDate.getDay();
+
+  const filter = {
+    isAvailable: true,
+    offDays: { $ne: targetDay },
+    unavailableDates: { $ne: targetDateStr }
+  };
+
+  const nurses = await Nurse.find(filter).select('-userId').lean();
   return res.json({ success: true, data: nurses.map(formatNurse) });
 });
 
@@ -55,11 +80,15 @@ const listNursesByService = asyncHandler(async (req, res) => {
     });
   }
 
-  const { date } = req.query; 
-  const dayOfWeek = date ? new Date(date).getDay() : null;
+  const targetDate = date ? new Date(date) : new Date();
+  const dayOfWeek = targetDate.getDay();
+  const targetDateStr = getTodayDateString(targetDate);
   
-  const query = { isAvailable: true };
-  if (dayOfWeek !== null) query.offDays = { $ne: dayOfWeek };
+  const query = {
+    isAvailable: true,
+    offDays: { $ne: dayOfWeek },
+    unavailableDates: { $ne: targetDateStr }
+  };
 
   const nurses = await Nurse.aggregate([
     { 
@@ -108,13 +137,15 @@ const searchNursesByName = asyncHandler(async (req, res) => {
 // Endpoint الفلترة المرنة للممرضين (تاريخ، موقع - منفردين أو مع بعض بدون اسم)
 const filterNurses = asyncHandler(async (req, res) => {
   const { date, lat, long } = req.query;
+  const targetDate = date ? new Date(date) : new Date();
+  const dayOfWeek = targetDate.getDay();
+  const targetDateStr = getTodayDateString(targetDate);
 
-  let query = { isAvailable: true };
-
-  if (date) {
-    const dayOfWeek = new Date(date).getDay();
-    query.offDays = { $ne: dayOfWeek };
-  }
+  let query = {
+    isAvailable: true,
+    offDays: { $ne: dayOfWeek },
+    unavailableDates: { $ne: targetDateStr }
+  };
 
   if (lat && long) {
     const lngVal = parseFloat(long);
@@ -162,10 +193,58 @@ const filterNurses = asyncHandler(async (req, res) => {
   });
 });
 
+// تحديث وصف الممرض (للممرض نفسه)
+const updateMyNurseDescription = asyncHandler(async (req, res) => {
+  const { description } = req.body;
+  const rawId = req.user.id || req.user._id;
+
+  let nurse = await Nurse.findOne({ userId: rawId });
+  if (!nurse && req.user.phoneNumber) {
+    nurse = await Nurse.findOne({ phoneNumber: req.user.phoneNumber });
+  }
+
+  if (!nurse) {
+    return res.status(404).json({ success: false, message: 'لم يتم العثور على ملف ممرض مرتبط بهذا الحساب' });
+  }
+
+  nurse.description = typeof description === 'string' ? description.trim() : '';
+  await nurse.save();
+
+  return res.json({
+    success: true,
+    message: 'تم تحديث وصف الممرض بنجاح',
+    data: formatNurse(nurse.toObject())
+  });
+});
+
+// تحديث وصف الممرض بمعرف الممرض (للأدمن أو الاستاف)
+const updateNurseDescriptionById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { description } = req.body;
+
+  const nurse = await Nurse.findByIdAndUpdate(
+    id,
+    { description: typeof description === 'string' ? description.trim() : '' },
+    { new: true }
+  ).lean();
+
+  if (!nurse) {
+    return res.status(404).json({ success: false, message: 'الممرض غير موجود' });
+  }
+
+  return res.json({
+    success: true,
+    message: 'تم تحديث وصف الممرض بنجاح',
+    data: formatNurse(nurse)
+  });
+});
+
 module.exports = {
   listNurses,
   getNurseById,
   listNursesByService,
   searchNursesByName,
-  filterNurses
+  filterNurses,
+  updateMyNurseDescription,
+  updateNurseDescriptionById
 };

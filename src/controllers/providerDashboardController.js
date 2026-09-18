@@ -4,7 +4,11 @@ const {
   scheduleBooking,
   updateBookingStatusService,
   getProviderSettlements,
-  updateOffDaysService
+  updateOffDaysService,
+  getTodayAvailabilityService,
+  toggleTodayAvailabilityService,
+  updateDescriptionService,
+  getProviderProfileService
 } = require('../services/providerDashboardService');
 
 // جلب الحجوزات مع الفلترة
@@ -95,10 +99,72 @@ const updateOffDays = asyncHandler(async (req, res) => {
   });
 });
 
+// جلب حالة استقبال الحجوزات اليوم (معرفة هل الزرار On أو Off)
+const getTodayAvailability = asyncHandler(async (req, res) => {
+  const data = await getTodayAvailabilityService({
+    userId: req.user.id || req.user._id
+  });
+
+  return res.json({
+    success: true,
+    data
+  });
+});
+
+// تحديث / تبديل حالة استقبال الحجوزات اليومية
+const updateTodayAvailability = asyncHandler(async (req, res) => {
+  const { isAvailableToday } = req.body;
+
+  const data = await toggleTodayAvailabilityService({
+    userId: req.user.id || req.user._id,
+    isAvailableToday
+  });
+
+  return res.json({
+    success: true,
+    message: data.isAvailableToday 
+      ? 'تم تفعيل استقبال الحجوزات لليوم بنجاح' 
+      : 'تم إيقاف استقبال الحجوزات لليوم بنجاح، ولن تظهر في قائمة الحجوزات المتاحة لهذا اليوم',
+    data
+  });
+});
+
+// تحديث الوصف التعريفي لمزود الخدمة
+const updateDescription = asyncHandler(async (req, res) => {
+  const { description } = req.body;
+
+  const data = await updateDescriptionService({
+    userId: req.user.id || req.user._id,
+    description
+  });
+
+  return res.json({
+    success: true,
+    message: 'تم تحديث الوصف بنجاح',
+    data
+  });
+});
+
+// جلب بيانات البروفايل لمزود الخدمة في الداش بورد
+const getProfile = asyncHandler(async (req, res) => {
+  const data = await getProviderProfileService({
+    userId: req.user.id || req.user._id
+  });
+
+  return res.json({
+    success: true,
+    data
+  });
+});
+
 module.exports = {
   listBookings,
   setBookingSchedule,
   changeBookingStatus,
   listSettlements,
-  updateOffDays
+  updateOffDays,
+  getTodayAvailability,
+  updateTodayAvailability,
+  updateDescription,
+  getProfile
 };

@@ -23,4 +23,14 @@ router.get('/settlements', controller.listSettlements);
 // تعديل أيام الإجازة الأسبوعية (offDays)
 router.patch('/off-days', controller.updateOffDays);
 
+// حالة استقبال الحجوزات لليوم الحالي (زرار الداش بورد)
+router.get('/today-availability', controller.getTodayAvailability);
+router.patch('/today-availability', controller.updateTodayAvailability);
+
+// تحديث الوصف التعريفي لمزود الخدمة (طبيب / ممرض)
+router.patch('/description', controller.updateDescription);
+
+// جلب بيانات بروفايل المزود في الداش بورد
+router.get('/profile', controller.getProfile);
+
 module.exports = router;

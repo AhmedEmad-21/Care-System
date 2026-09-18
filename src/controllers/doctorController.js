@@ -6,6 +6,8 @@ const {
   withOptionalDateFilter
 } = require('../utils/nameSearch');
 
+const { getTodayDateString } = require('../utils/dateUtils');
+
 const formatDoctorPrice = (doc) => {
   if (!doc) return doc;
   const basePrice = doc.basePrice != null ? Number(doc.basePrice) : 0;
@@ -13,21 +15,38 @@ const formatDoctorPrice = (doc) => {
     ? Number(doc.urgentPrice)
     : basePrice;
 
+  const todayStr = getTodayDateString();
+  const todayDay = new Date().getDay();
+  const unavailableDates = Array.isArray(doc.unavailableDates) ? doc.unavailableDates : [];
+  const offDays = Array.isArray(doc.offDays) ? doc.offDays : [];
+  const isAvailableToday = Boolean(doc.isAvailable) &&
+    !unavailableDates.includes(todayStr) &&
+    !offDays.includes(todayDay);
+
   const { userId, ...rest } = doc;
 
   return {
     ...rest,
+    description: doc.description || '',
     basePrice,
-    urgentPrice
+    urgentPrice,
+    isAvailableToday
   };
 };
 
 const listDoctors = asyncHandler(async (req, res) => {
   const { date } = req.query;
-  let filter = { ...req.filterCriteria, isAvailable: true };
-  if (date) {
-    filter.offDays = { $ne: new Date(date).getDay() };
-  }
+  const targetDate = date ? new Date(date) : new Date();
+  const targetDateStr = getTodayDateString(targetDate);
+  const targetDay = targetDate.getDay();
+
+  let filter = {
+    ...req.filterCriteria,
+    isAvailable: true,
+    offDays: { $ne: targetDay },
+    unavailableDates: { $ne: targetDateStr }
+  };
+
   const doctors = await Doctor.find(filter).select('-userId').lean();
   return res.json({ success: true, data: doctors.map(formatDoctorPrice) });
 });
@@ -44,7 +63,9 @@ const listAvailableDoctors = asyncHandler(async (req, res) => {
   const { specialty, lat, long, date } = req.query; 
   const userCoordinates = [parseFloat(long), parseFloat(lat)]; // [longitude, latitude]
   
-  const targetDay = date ? new Date(date).getDay() : new Date().getDay();
+  const targetDate = date ? new Date(date) : new Date();
+  const targetDay = targetDate.getDay();
+  const targetDateStr = getTodayDateString(targetDate);
 
   const doctors = await Doctor.aggregate([
     {
@@ -56,7 +77,8 @@ const listAvailableDoctors = asyncHandler(async (req, res) => {
         query: { 
           specialization: specialty, 
           isAvailable: true,
-          offDays: { $ne: targetDay }
+          offDays: { $ne: targetDay },
+          unavailableDates: { $ne: targetDateStr }
         }
       }
     }
@@ -114,16 +136,18 @@ const searchDoctorsByName = asyncHandler(async (req, res) => {
 // Endpoint الفلترة المرنة (تخصص، تاريخ، موقع - منفردين أو مجتمعين بدون اسم)
 const filterDoctors = asyncHandler(async (req, res) => {
   const { specialization, date, lat, long } = req.query;
+  const targetDate = date ? new Date(date) : new Date();
+  const targetDay = targetDate.getDay();
+  const targetDateStr = getTodayDateString(targetDate);
   
-  let query = { isAvailable: true };
+  let query = {
+    isAvailable: true,
+    offDays: { $ne: targetDay },
+    unavailableDates: { $ne: targetDateStr }
+  };
 
   if (specialization) {
     query.specialization = specialization;
-  }
-
-  if (date) {
-    const targetDay = new Date(date).getDay();
-    query.offDays = { $ne: targetDay };
   }
 
   if (lat && long) {
@@ -171,11 +195,59 @@ const filterDoctors = asyncHandler(async (req, res) => {
   });
 });
 
+// تحديث وصف الطبيب (للطبيب نفسه)
+const updateMyDoctorDescription = asyncHandler(async (req, res) => {
+  const { description } = req.body;
+  const rawId = req.user.id || req.user._id;
+
+  let doctor = await Doctor.findOne({ userId: rawId });
+  if (!doctor && req.user.phoneNumber) {
+    doctor = await Doctor.findOne({ phoneNumber: req.user.phoneNumber });
+  }
+
+  if (!doctor) {
+    return res.status(404).json({ success: false, message: 'لم يتم العثور على ملف طبيب مرتبط بهذا الحساب' });
+  }
+
+  doctor.description = typeof description === 'string' ? description.trim() : '';
+  await doctor.save();
+
+  return res.json({
+    success: true,
+    message: 'تم تحديث وصف الطبيب بنجاح',
+    data: formatDoctorPrice(doctor.toObject())
+  });
+});
+
+// تحديث وصف الطبيب بمعرف الطبيب (للأدمن أو الاستاف)
+const updateDoctorDescriptionById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { description } = req.body;
+
+  const doctor = await Doctor.findByIdAndUpdate(
+    id,
+    { description: typeof description === 'string' ? description.trim() : '' },
+    { new: true }
+  ).lean();
+
+  if (!doctor) {
+    return res.status(404).json({ success: false, message: 'الطبيب غير موجود' });
+  }
+
+  return res.json({
+    success: true,
+    message: 'تم تحديث وصف الطبيب بنجاح',
+    data: formatDoctorPrice(doctor)
+  });
+});
+
 module.exports = { 
   listDoctors, 
   getDoctorById, 
   listAvailableDoctors, 
   getSpecializations, 
   searchDoctorsByName,
-  filterDoctors
+  filterDoctors,
+  updateMyDoctorDescription,
+  updateDoctorDescriptionById
 };

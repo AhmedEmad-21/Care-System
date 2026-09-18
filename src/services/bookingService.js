@@ -8,6 +8,7 @@ const { BOOKING_STATUSES } = require('../config/constants');
 const { logAuditEvent } = require('./auditLogService');
 const { normalizeGeoPoint } = require('../utils/geoPoint');
 const { sendNotificationToUser } = require('./notificationService');
+const { getTodayDateString } = require('../utils/dateUtils');
 
 const ACTIVE_BOOKING_STATUSES = [BOOKING_STATUSES.PENDING, BOOKING_STATUSES.CONFIRMED];
 
@@ -130,6 +131,19 @@ const createDoctorBooking = async ({
     appointmentTime,
   });
 
+  if (resolvedDoctor && appointmentTime) {
+    const targetDate = new Date(appointmentTime);
+    const targetDateStr = getTodayDateString(targetDate);
+    const targetDay = targetDate.getDay();
+
+    if (Array.isArray(resolvedDoctor.unavailableDates) && resolvedDoctor.unavailableDates.includes(targetDateStr)) {
+      throw new BadRequestError('الطبيب لا يستقبل حجوزات في هذا اليوم المحدد');
+    }
+    if (Array.isArray(resolvedDoctor.offDays) && resolvedDoctor.offDays.includes(targetDay)) {
+      throw new BadRequestError('هذا اليوم يوافق يوم الإجازة الأسبوعية للطبيب');
+    }
+  }
+
   // نوع الحجز: regular أو urgent
   const normalizedBookingType = (bookingType || priceType || consultationType || 'regular').toLowerCase();
   const finalBookingType = normalizedBookingType === 'urgent' ? 'urgent' : 'regular';
@@ -226,6 +240,19 @@ const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLoca
     patientId,
     appointmentTime,
   });
+
+  if (appointmentTime) {
+    const targetDate = new Date(appointmentTime);
+    const targetDateStr = getTodayDateString(targetDate);
+    const targetDay = targetDate.getDay();
+
+    if (Array.isArray(nurse.unavailableDates) && nurse.unavailableDates.includes(targetDateStr)) {
+      throw new BadRequestError('الممرض لا يستقبل حجوزات في هذا اليوم المحدد');
+    }
+    if (Array.isArray(nurse.offDays) && nurse.offDays.includes(targetDay)) {
+      throw new BadRequestError('هذا اليوم يوافق يوم الإجازة الأسبوعية للممرض');
+    }
+  }
 
   // جلب اللوكيشن المسجل لليوزر تلقائياً لو الفرونت مابعتهوش
   let finalLocation = requestLocation;

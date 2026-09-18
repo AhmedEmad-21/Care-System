@@ -12,6 +12,11 @@ router.get('/filter', doctorController.filterDoctors);
 
 router.get('/search', authMW, doctorController.listAvailableDoctors);
 router.get('/', filterAvailableDoctorsMW, doctorController.listDoctors);
+
+// تحديث وصف الطبيب
+router.patch('/description', authMW, doctorController.updateMyDoctorDescription);
+router.patch('/:id/description', authMW, doctorController.updateDoctorDescriptionById);
+
 router.get('/:id', doctorController.getDoctorById);
 
 module.exports = router;

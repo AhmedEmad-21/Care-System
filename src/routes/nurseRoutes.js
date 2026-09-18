@@ -12,6 +12,10 @@ router.get('/filter', nurseController.filterNurses);
 router.get('/', filterAvailableDoctorsMW, nurseController.listNurses);
 router.get('/nearby', authMW, nurseController.listNursesByService);
 
+// تحديث وصف الممرض
+router.patch('/description', authMW, nurseController.updateMyNurseDescription);
+router.patch('/:id/description', authMW, nurseController.updateNurseDescriptionById);
+
 router.get('/:id', nurseController.getNurseById);
 
 module.exports = router;

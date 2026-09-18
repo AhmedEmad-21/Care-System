@@ -25,7 +25,9 @@ const doctorSchema = new mongoose.Schema({
     end: { type: String, default: '17:00' }
   },
   offDays: { type: [Number], default: [] },
-  isAvailable: { type: Boolean, default: true }
+  isAvailable: { type: Boolean, default: true },
+  description: { type: String, required: false, default: '', trim: true },
+  unavailableDates: { type: [String], default: [] }
 }, { timestamps: true });
 
 doctorSchema.index({ location: '2dsphere' });

@@ -206,3 +206,108 @@ Authorization: Bearer <YOUR_TOKEN>
   }
 }
 ```
+
+---
+
+### 6. حالة استقبال الحجوزات اليوم (زر التحكم في الداش بورد)
+
+يستخدم لمعرفة حالة استقبال الحجوزات لليوم الحالي (On/Off) والتحكم فيها، بحيث إذا قرر الطبيب أو الممرض عدم استقبال كشوفات لليوم الحالي فقط يقوم بإيقاف الزرار. 
+> **ملاحظة هامة:** عند إيقاف استقبال الحجوزات لليوم، يختفي الطبيب/الممرض من قوائم البحث الخاصة باليوم الحالي تلقائياً ولن يتمكن المرضى من اختياره لليوم، **ولكنه يظل ظاهراً ومتاحاً للحجز في أي يوم آخر (غداً وما بعده) بشكل طبيعي**.
+
+#### أ) استعلام حالة اليوم (Get Today Availability):
+* **Endpoint:** `GET /api/provider-dashboard/today-availability`
+* **Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "date": "2026-09-18",
+    "type": "doctor",
+    "isAvailableToday": true,
+    "isDateBlocked": false,
+    "isDayOff": false,
+    "isAvailable": true,
+    "unavailableDates": []
+  }
+}
+```
+
+#### ب) تبديل أو تغيير حالة اليوم (Toggle / Set Today Availability):
+* **Endpoint:** `PATCH /api/provider-dashboard/today-availability`
+* **Request Body (اختياري - إذا أُرسل فارغاً يقوم بالتبديل التلقائي Toggle):**
+```json
+{
+  "isAvailableToday": false
+}
+```
+* **Response:**
+```json
+{
+  "success": true,
+  "message": "تم إيقاف استقبال الحجوزات لليوم بنجاح، ولن تظهر في قائمة الحجوزات المتاحة لهذا اليوم",
+  "data": {
+    "date": "2026-09-18",
+    "type": "doctor",
+    "isAvailableToday": false,
+    "isDateBlocked": true,
+    "isDayOff": false,
+    "isAvailable": true,
+    "unavailableDates": ["2026-09-18"]
+  }
+}
+```
+
+---
+
+### 7. تحديث الوصف التعريفي (Description)
+
+يسمح للطبيب أو الممرض بكتابة أو تعديل الوصف الخاص به (النبذة التعريفية والخبرات) الذي يظهر للمرضى في البروفايل.
+
+* **Endpoint:** `PATCH /api/provider-dashboard/description`
+* **ملاحظة:** متاح أيضاً عبر المسارات المخصصة:
+  - للأطباء: `PATCH /api/doctors/description`
+  - للممرضين: `PATCH /api/nurses/description`
+* **Request Body:**
+```json
+{
+  "description": "استشاري أمراض الباطنة والسكري، حاصل على الدكتوراه وخبرة 15 عاماً في مناظير الجهاز الهضمي والتشخيص المبكر."
+}
+```
+* **Response:**
+```json
+{
+  "success": true,
+  "message": "تم تحديث الوصف بنجاح",
+  "data": {
+    "type": "doctor",
+    "_id": "60d0fe4f5311236168a109cd",
+    "name": "دكتور حازم",
+    "description": "استشاري أمراض الباطنة والسكري، حاصل على الدكتوراه وخبرة 15 عاماً في مناظير الجهاز الهضمي والتشخيص المبكر."
+  }
+}
+```
+
+---
+
+### 8. عرض بيانات بروفايل المزود كاملة في الداش بورد
+
+* **Endpoint:** `GET /api/provider-dashboard/profile`
+* **Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "_id": "60d0fe4f5311236168a109cd",
+    "name": "دكتور حازم",
+    "specialization": "باطنة",
+    "description": "استشاري أمراض الباطنة والسكري...",
+    "phoneNumber": "01002694545",
+    "basePrice": 300,
+    "urgentPrice": 450,
+    "isAvailable": true,
+    "isAvailableToday": true,
+    "offDays": [5, 6],
+    "unavailableDates": []
+  }
+}
+```

@@ -28,7 +28,7 @@
 |---|---|---|
 | `name` | إجباري | بحث مرن داخل `Doctor.name` |
 | `specialization` | اختياري | مطابقة مباشرة للتخصص |
-| `date` | اختياري | استبعاد اليوم من `offDays` |
+| `date` | اختياري | استبعاد الأيام غير المتاحة (offDays و unavailableDates) |
 | `lat` + `long` | اختياريان معاً | ترتيب بالأقرب، حد 35 كم |
 
 دائماً: `isAvailable = true`. لو `lat` أو `long` لوحده، البحث الجغرافي يتجاهل ويرجع بحث بالاسم.
@@ -66,7 +66,7 @@ GET /api/doctors/search-by-name?name=أحمد&date=2026-09-10&lat=29.3084&long=3
 | Param | الحالة | الاستخدام |
 |---|---|---|
 | `name` | إجباري | بحث مرن داخل `Nurse.name` |
-| `date` | اختياري | استبعاد اليوم من `offDays` |
+| `date` | اختياري | استبعاد الأيام غير المتاحة (offDays و unavailableDates) |
 | `lat` + `long` | اختياريان معاً | `$geoNear`، `dist.calculated`، 35000 متر |
 
 دائماً: `isAvailable = true`. استخدم `long` وليس `lng` (عقد `/nearby` مختلف).

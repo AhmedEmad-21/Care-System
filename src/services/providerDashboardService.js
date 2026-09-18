@@ -6,6 +6,7 @@ const User = require('../models/userModel');
 const { sendNotificationToUser } = require('./notificationService');
 const { NotFoundError, BadRequestError } = require('../errors/appErrors');
 const { BOOKING_STATUSES } = require('../config/constants');
+const { getTodayDateString } = require('../utils/dateUtils');
 
 // دالة مساعدة لمعرفة هل المستخدم الحالي دكتور أم ممرض وجلب موديل البيانات المناسب
 const getProviderDetails = async (userId, throwOnNotFound = false) => {
@@ -49,6 +50,8 @@ const getProviderDetails = async (userId, throwOnNotFound = false) => {
         basePrice: 200,
         urgentPrice: 250,
         commissionRate: 10,
+        description: '',
+        unavailableDates: [],
         location: (user.location && Array.isArray(user.location.coordinates) && user.location.coordinates.length === 2)
           ? user.location
           : { type: 'Point', coordinates: [30.8428, 29.3084] },
@@ -76,6 +79,8 @@ const getProviderDetails = async (userId, throwOnNotFound = false) => {
           ? user.location
           : { type: 'Point', coordinates: [30.8428, 29.3084] },
         commissionRate: 10,
+        description: '',
+        unavailableDates: [],
         addedBy: user.createdByAdminID || user._id,
         isAvailable: true
       });
@@ -376,11 +381,131 @@ const updateOffDaysService = async ({ userId, offDays }) => {
   return updatedProvider;
 };
 
+// 6. جلب حالة استقبال الحجوزات لليوم الحالي
+const getTodayAvailabilityService = async ({ userId }) => {
+  const details = await getProviderDetails(userId, true);
+  const { providerDoc, type } = details;
+
+  const todayStr = getTodayDateString();
+  const todayDay = new Date().getDay();
+  const unavailableDates = Array.isArray(providerDoc.unavailableDates) ? providerDoc.unavailableDates : [];
+  const offDays = Array.isArray(providerDoc.offDays) ? providerDoc.offDays : [];
+
+  const isDayOff = offDays.includes(todayDay);
+  const isDateBlocked = unavailableDates.includes(todayStr);
+  const isAvailableToday = Boolean(providerDoc.isAvailable) && !isDateBlocked && !isDayOff;
+
+  return {
+    date: todayStr,
+    type,
+    isAvailableToday,
+    isDateBlocked,
+    isDayOff,
+    isAvailable: Boolean(providerDoc.isAvailable),
+    unavailableDates
+  };
+};
+
+// 7. تبديل / تحديث حالة استقبال الحجوزات لليوم الحالي (زر التحكم في الداش بورد)
+const toggleTodayAvailabilityService = async ({ userId, isAvailableToday }) => {
+  const details = await getProviderDetails(userId, true);
+  const { providerModel, providerDoc, type } = details;
+
+  const todayStr = getTodayDateString();
+  let unavailableDates = Array.isArray(providerDoc.unavailableDates) ? [...providerDoc.unavailableDates] : [];
+
+  let newAvailableState;
+  if (typeof isAvailableToday === 'boolean') {
+    newAvailableState = isAvailableToday;
+  } else {
+    // تبديل تلقائي للحالة (Toggle)
+    const currentlyBlocked = unavailableDates.includes(todayStr);
+    newAvailableState = currentlyBlocked; // إذا كان محظوراً، نجعله متاحاً
+  }
+
+  if (newAvailableState) {
+    // متاح اليوم -> نزيل تاريخ اليوم من قائمة التواريخ غير المتاحة
+    unavailableDates = unavailableDates.filter(d => d !== todayStr);
+  } else {
+    // غير متاح اليوم -> نضيف تاريخ اليوم
+    if (!unavailableDates.includes(todayStr)) {
+      unavailableDates.push(todayStr);
+    }
+  }
+
+  const updatedProvider = await providerModel.findByIdAndUpdate(
+    providerDoc._id,
+    { unavailableDates },
+    { new: true }
+  ).lean();
+
+  const todayDay = new Date().getDay();
+  const offDays = Array.isArray(updatedProvider.offDays) ? updatedProvider.offDays : [];
+  const isDayOff = offDays.includes(todayDay);
+  const isDateBlocked = unavailableDates.includes(todayStr);
+
+  return {
+    date: todayStr,
+    type,
+    isAvailableToday: Boolean(updatedProvider.isAvailable) && !isDateBlocked && !isDayOff,
+    isDateBlocked,
+    isDayOff,
+    isAvailable: Boolean(updatedProvider.isAvailable),
+    unavailableDates
+  };
+};
+
+// 8. تحديث الوصف التعريفي لمزود الخدمة
+const updateDescriptionService = async ({ userId, description }) => {
+  const details = await getProviderDetails(userId, true);
+  const { providerModel, providerDoc, type } = details;
+
+  const updatedProvider = await providerModel.findByIdAndUpdate(
+    providerDoc._id,
+    { description: typeof description === 'string' ? description.trim() : '' },
+    { new: true }
+  ).lean();
+
+  return {
+    type,
+    _id: updatedProvider._id,
+    name: updatedProvider.name,
+    description: updatedProvider.description || ''
+  };
+};
+
+// 9. جلب بروفايل المزود في الداش بورد كاملاً
+const getProviderProfileService = async ({ userId }) => {
+  const details = await getProviderDetails(userId, true);
+  const { providerDoc, type } = details;
+
+  const todayStr = getTodayDateString();
+  const todayDay = new Date().getDay();
+  const unavailableDates = Array.isArray(providerDoc.unavailableDates) ? providerDoc.unavailableDates : [];
+  const offDays = Array.isArray(providerDoc.offDays) ? providerDoc.offDays : [];
+
+  const isDayOff = offDays.includes(todayDay);
+  const isDateBlocked = unavailableDates.includes(todayStr);
+  const isAvailableToday = Boolean(providerDoc.isAvailable) && !isDateBlocked && !isDayOff;
+
+  return {
+    ...providerDoc,
+    type,
+    isAvailableToday,
+    isDateBlocked,
+    isDayOff
+  };
+};
+
 module.exports = {
   getProviderBookings,
   scheduleBooking,
   updateBookingStatusService,
   getProviderSettlements,
   updateOffDaysService,
-  getProviderDetails
+  getProviderDetails,
+  getTodayAvailabilityService,
+  toggleTodayAvailabilityService,
+  updateDescriptionService,
+  getProviderProfileService
 };
