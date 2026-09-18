@@ -1014,6 +1014,7 @@ GET /api/nurses/nearby?lng=31.2357&lat=30.0444&date=2026-07-25
 | `doctorId`        | string (ObjectId)  | ✅\*     | Doctor ID                           |
 | `nurseId`         | string (ObjectId)  | ✅\*     | Alternative to doctorId             |
 | `appointmentTime` | string (date-time) | ✅       | ISO 8601                            |
+| `bookingType`     | string             | ❌       | `"regular"` (default) or `"urgent"` |
 | `requestLocation` | GeoPoint           | ❌       | Patient location at time of booking |
 
 > \*Either `doctorId` or `nurseId` is required (schema uses `anyOf`).
@@ -1024,6 +1025,7 @@ GET /api/nurses/nearby?lng=31.2357&lat=30.0444&date=2026-07-25
 {
   "doctorId": "64a1b2c3d4e5f6789012345b",
   "appointmentTime": "2026-07-25T10:00:00.000Z",
+  "bookingType": "urgent",
   "requestLocation": {
     "type": "Point",
     "coordinates": [31.2357, 30.0444]
@@ -1036,15 +1038,14 @@ GET /api/nurses/nearby?lng=31.2357&lat=30.0444&date=2026-07-25
 ```json
 {
   "success": true,
-  "message": "done",
   "data": {
-    /* Doctor Booking Object — see §3.6 */
+    /* Doctor Booking Object with populated doctorId */
   }
 }
 ```
 
 > `patientId` is automatically set from the JWT token.  
-> `totalCost` is auto-calculated from doctor's `basePrice`.  
+> `bookingType` determines `totalCost`: `"regular"` uses `basePrice`, `"urgent"` uses `urgentPrice`.  
 > `status` defaults to `"pending"`.
 
 #### Error Responses

@@ -36,7 +36,8 @@ const listAllBookings = asyncHandler(async (req, res) => {
     .populate('doctorId', 'name specialization')
     .populate('nurseId', 'name')
     .sort({ createdAt: -1 })
-    .limit(limit ? Number(limit) : 50);
+    .limit(limit ? Number(limit) : 50)
+    .lean();
 
   return res.json({
     success: true,
@@ -200,7 +201,8 @@ const getBookingDetails = asyncHandler(async (req, res) => {
     .populate('patientId', 'name phoneNumber email')
     .populate('doctorId', 'name specialization commissionRate basePrice urgentPrice')
     .populate('nurseId', 'name commissionRate')
-    .populate('confirmedByStaffId', 'name');
+    .populate('confirmedByStaffId', 'name')
+    .lean();
 
   if (!booking) {
     return res.status(404).json({ success: false, message: 'الحجز غير موجود' });

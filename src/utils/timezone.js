@@ -1,9 +1,9 @@
 const normalizeResponseTimestamps = (value, maybeTimezoneOrSeen, maybeSeen) => {
-  const seen = maybeSeen instanceof WeakSet
+  const activeStack = maybeSeen instanceof Set
     ? maybeSeen
-    : maybeTimezoneOrSeen instanceof WeakSet
+    : maybeTimezoneOrSeen instanceof Set
       ? maybeTimezoneOrSeen
-      : new WeakSet();
+      : new Set();
 
   if (value instanceof Date) {
     return value.toISOString();
@@ -18,26 +18,31 @@ const normalizeResponseTimestamps = (value, maybeTimezoneOrSeen, maybeSeen) => {
   }
 
   if (Array.isArray(value)) {
-    return value.map((entry) => normalizeResponseTimestamps(entry, seen));
+    return value.map((entry) => normalizeResponseTimestamps(entry, activeStack));
   }
 
   if (typeof value === 'object') {
-    if (seen.has(value)) {
+    if (activeStack.has(value)) {
       return '[Circular]';
     }
-    seen.add(value);
+    activeStack.add(value);
 
     // Preserve special serialized objects like ObjectId where a simple string is safer.
     if (value._bsontype === 'ObjectId' && typeof value.toString === 'function') {
+      activeStack.delete(value);
       return value.toString();
     }
 
+    // Convert Mongoose Document to plain object if needed
+    const plainObj = typeof value.toObject === 'function' ? value.toObject() : value;
+
     const normalized = {};
 
-    for (const [key, nestedValue] of Object.entries(value)) {
-      normalized[key] = normalizeResponseTimestamps(nestedValue, seen);
+    for (const [key, nestedValue] of Object.entries(plainObj)) {
+      normalized[key] = normalizeResponseTimestamps(nestedValue, activeStack);
     }
 
+    activeStack.delete(value);
     return normalized;
   }
 

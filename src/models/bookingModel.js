@@ -43,6 +43,12 @@ const bookingSchema = new mongoose.Schema(
       ref: 'Nurse',
       default: null,
     },
+    bookingType: {
+      type: String,
+      enum: ['regular', 'urgent'],
+      default: 'regular',
+      index: true,
+    },
     requestLocation: {
       type: geoPointSchema,
       default: null,

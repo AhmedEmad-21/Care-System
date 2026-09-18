@@ -112,17 +112,30 @@ const getProviderBookings = async ({ userId, status, date }) => {
   }
 
   const bookings = await Booking.find(query)
-    .populate('patientId', 'name phoneNumber')
+    .populate('patientId', 'name phoneNumber profileImage')
     .sort({ createdAt: -1 })
     .lean();
 
   const nursingBookings = await NursingBooking.find(query)
-    .populate('patientId', 'name phoneNumber')
+    .populate('patientId', 'name phoneNumber profileImage')
     .populate('serviceId', 'name basePrice')
     .sort({ createdAt: -1 })
     .lean();
 
-  return [...bookings, ...nursingBookings];
+  const allBookings = [...bookings, ...nursingBookings];
+
+  // منع أي تكرار مرجعي (Circular Reference) عند وجود أكثر من حجز لنفس المريض
+  return allBookings.map((b) => ({
+    ...b,
+    patientId: (b.patientId && typeof b.patientId === 'object')
+      ? {
+          _id: b.patientId._id,
+          name: b.patientId.name,
+          phoneNumber: b.patientId.phoneNumber,
+          profileImage: b.patientId.profileImage || null
+        }
+      : b.patientId
+  }));
 };
 
 // 2. تحديث موعد الحجز وتأكيده
@@ -270,12 +283,12 @@ const getProviderSettlements = async ({ userId, startDate, endDate, isSettled })
   }
 
   const bookings = await Booking.find(query)
-    .populate('patientId', 'name phoneNumber')
+    .populate('patientId', 'name phoneNumber profileImage')
     .sort({ updatedAt: -1 })
     .lean();
 
   const nursingBookings = await NursingBooking.find(query)
-    .populate('patientId', 'name phoneNumber')
+    .populate('patientId', 'name phoneNumber profileImage')
     .populate('serviceId', 'name basePrice')
     .sort({ updatedAt: -1 })
     .lean();
@@ -311,6 +324,14 @@ const getProviderSettlements = async ({ userId, startDate, endDate, isSettled })
 
     return {
       ...b,
+      patientId: (b.patientId && typeof b.patientId === 'object')
+        ? {
+            _id: b.patientId._id,
+            name: b.patientId.name,
+            phoneNumber: b.patientId.phoneNumber,
+            profileImage: b.patientId.profileImage || null
+          }
+        : b.patientId,
       appliedCommissionRate: commissionRate,
       calculatedCommission: commission,
       providerEarnings

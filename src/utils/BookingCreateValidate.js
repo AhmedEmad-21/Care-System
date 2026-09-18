@@ -24,6 +24,11 @@ module.exports = {
     nurseId: { type: 'string', minLength: 1 },
     requestLocation: geoPointSchema, // الآن هو معرف في الأعلى
     appointmentTime: { type: 'string', format: 'date-time' },
+    bookingType: { type: 'string', enum: ['regular', 'urgent'] },
+    priceType: { type: 'string', enum: ['regular', 'urgent'] },
+    consultationType: { type: 'string', enum: ['regular', 'urgent'] },
+    symptoms: { type: 'string' },
+    suggestedSpecialty: { type: 'string' },
   },
   anyOf: [
     { required: ['doctorId'] },

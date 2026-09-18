@@ -59,30 +59,64 @@ const assertNoSameDayBooking = async ({ patientId, appointmentTime }) => {
   }
 };
 
-const resolveBookingPrice = async ({ doctorId, nurseId }) => {
-  if (doctorId) {
-    const doctor = await Doctor.findById(doctorId).lean();
+const resolveBookingPrice = async ({ doctorDoc, doctorId, nurseId, bookingType = 'regular' }) => {
+  if (doctorDoc || doctorId) {
+    const doctor = doctorDoc || await Doctor.findById(doctorId).lean();
     if (!doctor) throw new NotFoundError('Doctor not found');
-    return doctor.basePrice || doctor.baseVisitPrice || 0;
+
+    if (bookingType === 'urgent') {
+      const urgentPrice = (doctor.urgentPrice != null && Number(doctor.urgentPrice) > 0)
+        ? Number(doctor.urgentPrice)
+        : Number(doctor.basePrice || doctor.baseVisitPrice || 0);
+      return urgentPrice;
+    }
+
+    return Number(doctor.basePrice || doctor.baseVisitPrice || 0);
   }
 
   if (nurseId) {
     const nurse = await Nurse.findById(nurseId).lean();
     if (!nurse) throw new NotFoundError('Nurse not found');
-    return nurse.servicePrice || 0;
+    return Number(nurse.servicePrice || 0);
   }
 
   throw new BadRequestError('doctorId or nurseId is required');
 };
 
-const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, requestLocation, appointmentTime, suggestedSpecialty }) => {
+const createDoctorBooking = async ({
+  patientId,
+  doctorId,
+  nurseId,
+  symptoms,
+  requestLocation,
+  appointmentTime,
+  suggestedSpecialty,
+  bookingType,
+  priceType,
+  consultationType
+}) => {
   if (!doctorId && !nurseId) {
     throw new BadRequestError('doctorId or nurseId is required');
   }
 
-  const providerField = doctorId ? 'doctorId' : 'nurseId';
-  const providerId = doctorId || nurseId;
-  const providerLabel = doctorId ? 'Doctor' : 'Nurse';
+  let resolvedDoctor = null;
+  let resolvedDoctorId = doctorId || null;
+
+  if (resolvedDoctorId) {
+    // محاولة إيجاد الطبيب بالـ _id أو بـ userId للتوافق التام
+    resolvedDoctor = await Doctor.findById(resolvedDoctorId).lean();
+    if (!resolvedDoctor) {
+      resolvedDoctor = await Doctor.findOne({ userId: resolvedDoctorId }).lean();
+    }
+    if (!resolvedDoctor) {
+      throw new NotFoundError('Doctor not found');
+    }
+    resolvedDoctorId = resolvedDoctor._id;
+  }
+
+  const providerField = resolvedDoctorId ? 'doctorId' : 'nurseId';
+  const providerId = resolvedDoctorId || nurseId;
+  const providerLabel = resolvedDoctorId ? 'Doctor' : 'Nurse';
 
   await assertNoDuplicateProviderBooking({
     patientId,
@@ -96,7 +130,16 @@ const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, req
     appointmentTime,
   });
 
-  const totalCost = await resolveBookingPrice({ doctorId, nurseId });
+  // نوع الحجز: regular أو urgent
+  const normalizedBookingType = (bookingType || priceType || consultationType || 'regular').toLowerCase();
+  const finalBookingType = normalizedBookingType === 'urgent' ? 'urgent' : 'regular';
+
+  const totalCost = await resolveBookingPrice({
+    doctorDoc: resolvedDoctor,
+    doctorId: resolvedDoctorId,
+    nurseId,
+    bookingType: finalBookingType
+  });
 
   // جلب اللوكيشن المسجل لليوزر تلقائياً لو الفرونت مابعتهوش
   let finalLocation = requestLocation;
@@ -109,8 +152,9 @@ const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, req
 
   const booking = await Booking.create({
     patientId,
-    doctorId: doctorId || null,
+    doctorId: resolvedDoctorId || null,
     nurseId: nurseId || null,
+    bookingType: finalBookingType,
     symptoms,
     suggestedSpecialty: suggestedSpecialty || null,
     requestLocation: normalizeGeoPoint(finalLocation, 'requestLocation'),
@@ -125,8 +169,8 @@ const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, req
     const patientName = patientUser?.name || 'مريض';
 
     let targetUserId = null;
-    if (doctorId) {
-      const doctorDoc = await Doctor.findById(doctorId).select('userId phoneNumber name').lean();
+    if (resolvedDoctorId) {
+      const doctorDoc = resolvedDoctor || await Doctor.findById(resolvedDoctorId).select('userId phoneNumber name').lean();
       if (doctorDoc?.userId) {
         targetUserId = doctorDoc.userId;
       } else if (doctorDoc?.phoneNumber) {
@@ -144,16 +188,19 @@ const createDoctorBooking = async ({ patientId, doctorId, nurseId, symptoms, req
     }
 
     if (targetUserId) {
+      const bookingTypeLabel = finalBookingType === 'urgent' ? 'مستعجل ⚡' : 'عادي';
       await sendNotificationToUser({
         userId: targetUserId,
-        title: 'طلب حجز جديد 🩺',
-        body: `لديك طلب حجز جديد من المريض (${patientName}). يرجى الدخول لتحديد موعد الكشف وتأكيد الحجز.`,
+        title: `طلب حجز جديد (${bookingTypeLabel}) 🩺`,
+        body: `لديك طلب حجز جديد (${bookingTypeLabel}) من المريض (${patientName}) بقيمة ${totalCost} ج.م. يرجى الدخول لتحديد موعد الكشف وتأكيد الحجز.`,
         type: 'booking',
         data: {
           bookingId: String(booking._id),
           bookingNumber: String(booking.bookingNumber || ''),
           patientId: String(patientId),
-          type: doctorId ? 'doctor' : 'nurse'
+          type: resolvedDoctorId ? 'doctor' : 'nurse',
+          bookingType: finalBookingType,
+          totalCost: String(totalCost)
         }
       });
     }
