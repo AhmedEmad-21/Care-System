@@ -52,7 +52,8 @@ const getNurseById = asyncHandler(async (req, res) => {
 
 // 3. البحث عن ممرضين حسب الموقع والخدمة
 const listNursesByService = asyncHandler(async (req, res) => {
-  let lng = req.query.lng;
+  const { date } = req.query;
+  let lng = req.query.lng || req.query.long;
   let lat = req.query.lat;
 
   if ((!lng || !lat) && req.query.requestLocation) {
@@ -80,7 +81,13 @@ const listNursesByService = asyncHandler(async (req, res) => {
     });
   }
 
-  const targetDate = date ? new Date(date) : new Date();
+  let targetDate = new Date();
+  if (date) {
+    const parsed = new Date(date);
+    if (!isNaN(parsed.getTime())) {
+      targetDate = parsed;
+    }
+  }
   const dayOfWeek = targetDate.getDay();
   const targetDateStr = getTodayDateString(targetDate);
   
@@ -103,7 +110,11 @@ const listNursesByService = asyncHandler(async (req, res) => {
     { $limit: 20 }
   ]);
   
-  return res.json({ success: true, data: nurses });
+  return res.json({ 
+    success: true, 
+    count: nurses.length, 
+    data: nurses.map(formatNurse) 
+  });
 });
 
 const searchNursesByName = asyncHandler(async (req, res) => {
