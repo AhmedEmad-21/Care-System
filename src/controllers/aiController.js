@@ -2,6 +2,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const aiService = require('../services/aiService');
 const { createAiSession, findMatchingDoctors, getAlternativeDoctors, resolveCanonicalSpecialty } = require('../services/matchingService');
 const Doctor = require('../models/doctorModel');
+const { getTodayDateString } = require('../utils/dateUtils');
 
 const formatDistance = (kilometers) => {
   if (!Number.isFinite(kilometers)) return null;
@@ -53,7 +54,9 @@ const searchDoctors = asyncHandler(async (req, res) => {
     });
   }
 
-  const targetDay = appointmentDate ? new Date(appointmentDate).getDay() : new Date().getDay();
+  const targetDate = appointmentDate ? new Date(appointmentDate) : new Date();
+  const targetDay = targetDate.getDay();
+  const targetDateStr = getTodayDateString(targetDate);
   const normalizedSpecialty = await resolveCanonicalSpecialty(specialty);
 
   const doctors = await Doctor.aggregate([
@@ -67,6 +70,7 @@ const searchDoctors = asyncHandler(async (req, res) => {
           specialization: normalizedSpecialty,
           isAvailable: true,
           offDays: { $ne: targetDay },
+          unavailableDates: { $ne: targetDateStr },
         },
       },
     },
@@ -76,8 +80,10 @@ const searchDoctors = asyncHandler(async (req, res) => {
     id: doc._id,
     name: doc.name,
     specialization: doc.specialization,
+    description: doc.description || '',
     distance: doc.dist?.calculated ? formatDistance(doc.dist.calculated / 1000) : null,
     basePrice: doc.basePrice,
+    urgentPrice: doc.urgentPrice,
     rating: doc.rating || null,
     totalReviews: doc.totalReviews || 0,
     isAvailable: doc.isAvailable,
@@ -110,9 +116,11 @@ const getAlternatives = asyncHandler(async (req, res) => {
     id: doc._id,
     name: doc.name,
     specialization: doc.specialization,
+    description: doc.description || '',
     distance: doc.dist?.calculated ? formatDistance(doc.dist.calculated / 1000) : null,
     isAvailable: doc.isAvailable,
     basePrice: doc.basePrice,
+    urgentPrice: doc.urgentPrice,
   }));
 
   return res.status(200).json({

@@ -86,7 +86,11 @@ const findDoctorsForSpecialty = async ({ specialty, requestLocation, maxDistance
   });
 
   const doctors = await Doctor.find(query).limit(limit).lean();
-  return { specialty: canonicalSpecialty, doctors };
+  const formattedDoctors = doctors.map((doc) => ({
+    ...doc,
+    description: doc.description || '',
+  }));
+  return { specialty: canonicalSpecialty, doctors: formattedDoctors };
 };
 
 const createAiSession = async ({ patientId, symptoms, requestLocation, maxDistanceMeters, suggestedSpecialty }) => {
