@@ -6,7 +6,7 @@ const Booking = require('../models/bookingModel');
 const NursingBooking = require('../models/nursingBookingModel');
 const AuditLog = require('../models/auditLogModel');
 const User = require('../models/userModel');
-const { cancelBooking } = require('../services/bookingService');
+const { cancelBooking, cancelBookingByNumber } = require('../services/bookingService');
 const { logAuditEvent, listAuditLogs } = require('../services/auditLogService');
 const { normalizeGeoPoint } = require('../utils/geoPoint');
 
@@ -15,72 +15,105 @@ const listAllBookings = asyncHandler(async (req, res) => {
   const { status, providerId, startDate, endDate, limit } = req.query;
 
   let query = {};
+  let nursingQuery = {};
 
   if (status) {
     query.status = status;
+    nursingQuery.status = status;
   }
 
   if (providerId) {
     query.$or = [{ doctorId: providerId }, { nurseId: providerId }];
+    nursingQuery.nurseId = providerId;
   }
 
   if (startDate && endDate) {
-    query.createdAt = {
+    const dateFilter = {
       $gte: new Date(startDate),
       $lte: new Date(endDate),
     };
+    query.createdAt = dateFilter;
+    nursingQuery.createdAt = dateFilter;
   }
 
-  const bookings = await Booking.find(query)
-    .populate('patientId', 'name phoneNumber')
-    .populate('doctorId', 'name specialization description')
-    .populate('nurseId', 'name description')
-    .sort({ createdAt: -1 })
-    .limit(limit ? Number(limit) : 50)
-    .lean();
+  const [doctorBookings, nursingBookings] = await Promise.all([
+    Booking.find(query)
+      .populate('patientId', 'name phoneNumber')
+      .populate('doctorId', 'name specialization description commissionRate')
+      .populate('nurseId', 'name description commissionRate')
+      .sort({ createdAt: -1 })
+      .limit(limit ? Number(limit) : 100)
+      .lean(),
+    NursingBooking.find(nursingQuery)
+      .populate('patientId', 'name phoneNumber')
+      .populate('nurseId', 'name description commissionRate')
+      .populate('serviceId', 'name description basePrice')
+      .sort({ createdAt: -1 })
+      .limit(limit ? Number(limit) : 100)
+      .lean(),
+  ]);
 
-  const formattedBookings = bookings.map((b) => ({
+  const formattedNursing = nursingBookings.map((b) => {
+    const cost = (typeof b.totalCost === 'number' && b.totalCost > 0)
+      ? b.totalCost
+      : Number(b.serviceId?.basePrice || 0);
+    return {
+      ...b,
+      totalCost: cost,
+      totalPrice: cost,
+      isReviewed: Boolean(b.isReviewed),
+    };
+  });
+
+  const formattedDoctor = doctorBookings.map((b) => ({
     ...b,
     isReviewed: Boolean(b.isReviewed),
   }));
 
+  const allBookings = [...formattedDoctor, ...formattedNursing].sort(
+    (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+  );
+
+  const finalBookings = limit ? allBookings.slice(0, Number(limit)) : allBookings;
+
   return res.json({
     success: true,
-    count: formattedBookings.length,
-    data: formattedBookings,
+    count: finalBookings.length,
+    data: finalBookings,
   });
 });
 
 // 2. إلغاء الحجز بالطريقة العادية بواسطة الستاف
 const cancelBookingHandler = asyncHandler(async (req, res) => {
+  const staffNote = req.body.staffNote || req.body.cancellationReason || req.body.reason || req.body.note || req.body.cancelReason || '';
   const booking = await cancelBooking({
     bookingId: req.params.id,
-    staffNote: req.body.staffNote,
+    staffNote,
     confirmedByStaffId: req.user.id || req.user._id,
   });
-  return res.json({ success: true, message: 'Booking cancelled', data: booking });
+  return res.json({
+    success: true,
+    message: 'تم إلغاء الحجز بنجاح وإرسال الإشعارات للطرفين بملاحظة الإلغاء',
+    data: booking,
+  });
 });
 
-// 3. إلغاء الحجز عبر رقم الحجز التسلسلي (للدعم الفني)
+// 3. إلغاء الحجز عبر رقم الحجز التسلسلي (للدعم الفني / الإلغاء السريع من الداش بورد)
 const cancelBookingByNumberHandler = asyncHandler(async (req, res) => {
-  const { bookingNumber } = req.params;
-  const { staffNote } = req.body;
+  const bookingNumber = req.params.bookingNumber || req.body.bookingNumber || req.query.bookingNumber;
+  const staffNote = req.body.staffNote || req.body.cancellationReason || req.body.reason || req.body.note || req.body.cancelReason || '';
 
-  const booking = await Booking.findOne({ bookingNumber: Number(bookingNumber) });
-  if (!booking) {
-    return res.status(404).json({ success: false, message: 'رقم الحجز غير صحيح أو غير موجود' });
-  }
+  const booking = await cancelBookingByNumber({
+    bookingNumber,
+    staffNote,
+    confirmedByStaffId: req.user.id || req.user._id,
+  });
 
-  if (booking.status === 'cancelled' || booking.status === 'completed') {
-    return res.status(400).json({ success: false, message: `لا يمكن إلغاء حجز حالته بالفعل: ${booking.status}` });
-  }
-
-  booking.status = 'cancelled';
-  if (staffNote) booking.staffNote = staffNote;
-  booking.confirmedByStaffId = req.user.id || req.user._id;
-  await booking.save();
-
-  return res.json({ success: true, message: 'تم إلغاء الحجز بنجاح بناءً على طلب الدعم الفني', data: booking });
+  return res.json({
+    success: true,
+    message: `تم إلغاء الحجز رقم #${booking.bookingNumber || bookingNumber} بنجاح وإرسال الإشعارات للطرفين بملاحظة الإلغاء`,
+    data: booking,
+  });
 });
 
 // 4. جلب الحجوزات المكتملة بغرض التسوية الأسبوعية

@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Booking = require('../models/bookingModel');
 const NursingBooking = require('../models/nursingBookingModel');
 const Doctor = require('../models/doctorModel');
@@ -319,9 +320,98 @@ const listPendingBookings = async ({ limit = 50 } = {}) => {
     .lean();
 };
 
+// إرسال إشعارات الإلغاء الفورية للطرفين (مقدم الخدمة والمريض) بملاحظة الإدارة
+const sendCancellationNotifications = async ({ booking, staffNote }) => {
+  try {
+    let providerTitle = 'مقدم الخدمة';
+    let providerUserId = null;
+
+    // 1. تحديد بيانات ومسمى مقدم الخدمة (طبيب أو ممرض)
+    if (booking.doctorId) {
+      const doctorDoc = await Doctor.findById(booking.doctorId).select('name userId phoneNumber').lean();
+      if (doctorDoc) {
+        providerTitle = `د. ${doctorDoc.name}`;
+        if (doctorDoc.userId) {
+          providerUserId = doctorDoc.userId;
+        } else if (doctorDoc.phoneNumber) {
+          const docUser = await User.findOne({ phoneNumber: doctorDoc.phoneNumber }).select('_id').lean();
+          providerUserId = docUser?._id;
+        }
+      }
+    } else if (booking.nurseId) {
+      const nurseDoc = await Nurse.findById(booking.nurseId).select('name userId phoneNumber').lean();
+      if (nurseDoc) {
+        providerTitle = `الممرض ${nurseDoc.name}`;
+        if (nurseDoc.userId) {
+          providerUserId = nurseDoc.userId;
+        } else if (nurseDoc.phoneNumber) {
+          const nurseUser = await User.findOne({ phoneNumber: nurseDoc.phoneNumber }).select('_id').lean();
+          providerUserId = nurseUser?._id;
+        }
+      }
+    }
+
+    const bookingNumStr = booking.bookingNumber ? `رقم #${booking.bookingNumber}` : '';
+    const noteText = staffNote && String(staffNote).trim() ? String(staffNote).trim() : null;
+
+    // 2. إرسال إشعار فوري لمزود الخدمة (طبيب أو ممرض)
+    if (providerUserId) {
+      const providerBody = noteText
+        ? `تم إلغاء الحجز ${bookingNumStr} من قبل الإدارة. ملاحظة الإلغاء: "${noteText}".`
+        : `تم إلغاء الحجز ${bookingNumStr} من قبل الإدارة.`;
+
+      await sendNotificationToUser({
+        userId: providerUserId,
+        title: `إلغاء حجز ${bookingNumStr} من الإدارة ⚠️`,
+        body: providerBody,
+        type: 'booking_cancelled',
+        data: {
+          bookingId: String(booking._id),
+          bookingNumber: String(booking.bookingNumber || ''),
+          status: 'cancelled',
+          staffNote: noteText || '',
+          action: 'booking_cancelled',
+        },
+      }).catch((err) => console.error('Failed sending cancel notification to provider:', err.message));
+    }
+
+    // 3. إرسال إشعار فوري للمريض
+    if (booking.patientId) {
+      const patientBody = noteText
+        ? `تم إلغاء موعد حجزك ${bookingNumStr} مع ${providerTitle}. ملاحظة الإدارة: "${noteText}".`
+        : `تم إلغاء موعد حجزك ${bookingNumStr} مع ${providerTitle}.`;
+
+      await sendNotificationToUser({
+        userId: booking.patientId,
+        title: `تم إلغاء الحجز ${bookingNumStr} ❌`,
+        body: patientBody,
+        type: 'booking_cancelled',
+        data: {
+          bookingId: String(booking._id),
+          bookingNumber: String(booking.bookingNumber || ''),
+          status: 'cancelled',
+          staffNote: noteText || '',
+          action: 'booking_cancelled',
+        },
+      }).catch((err) => console.error('Failed sending cancel notification to patient:', err.message));
+    }
+  } catch (error) {
+    console.error('Error in sendCancellationNotifications:', error.message);
+  }
+};
+
 const updateBookingStatus = async ({ bookingId, status, appointmentTime, staffNote, confirmedByStaffId }) => {
-  const booking = await Booking.findById(bookingId);
+  let booking = await Booking.findById(bookingId);
+  let isNursing = false;
+  if (!booking) {
+    booking = await NursingBooking.findById(bookingId);
+    if (booking) isNursing = true;
+  }
   if (!booking) throw new NotFoundError('Booking not found');
+
+  if (status === BOOKING_STATUSES.CANCELLED && (booking.status === BOOKING_STATUSES.CANCELLED || booking.status === BOOKING_STATUSES.COMPLETED)) {
+    throw new BadRequestError(`لا يمكن إلغاء حجز حالته بالفعل: ${booking.status}`);
+  }
 
   const before = booking.toObject();
 
@@ -347,36 +437,39 @@ const updateBookingStatus = async ({ bookingId, status, appointmentTime, staffNo
     actorId: confirmedByStaffId || null,
     actorRole: 'Staff',
     action: 'BOOKING_STATUS_CHANGED',
-    entityType: 'Booking',
+    entityType: isNursing ? 'NursingBooking' : 'Booking',
     entityId: booking._id,
     before,
     after: booking.toObject(),
     meta: { status, appointmentTime, staffNote },
   });
 
+  // في حال الإلغاء، يتم إرسال الإشعار بملاحظة الإدارة للطرفين فوراً
+  if (booking.status === BOOKING_STATUSES.CANCELLED) {
+    await sendCancellationNotifications({ booking, staffNote });
+    return booking;
+  }
+
   const providerLabel = booking.doctorId ? 'Doctor' : booking.nurseId ? 'Nurse' : 'Provider';
   const providerId = booking.doctorId || booking.nurseId;
   
   const notificationTitleMap = {
     [BOOKING_STATUSES.CONFIRMED]: 'تم تأكيد الحجز',
-    [BOOKING_STATUSES.CANCELLED]: 'تم إلغاء الحجز',
     [BOOKING_STATUSES.COMPLETED]: 'تم إكمال الحجز',
     [BOOKING_STATUSES.REJECTED]: 'تم رفض الحجز',
   };
 
   const notificationBodyMap = {
     [BOOKING_STATUSES.CONFIRMED]: `تم تأكيد موعدك مع ${providerLabel} بنجاح`,
-    [BOOKING_STATUSES.CANCELLED]: `تم إلغاء موعدك مع ${providerLabel}`,
     [BOOKING_STATUSES.COMPLETED]: `تم إتمام زيارتك بنجاح. نرجو منك تقييم تجربتك ⭐`,
     [BOOKING_STATUSES.REJECTED]: `تم رفض طلب الحجز الخاص بك`,
   };
 
   if (booking.patientId && notificationTitleMap[booking.status]) {
-    // بناء بيانات إضافية مخصصة لو الحالة completed عشان تفتح شاشة التقييم في الفرونت
     const notificationData = {
       bookingId: booking._id.toString(),
       status: booking.status,
-      providerType: providerLabel, // 'Doctor' أو 'Nurse' متوافقة مع الـ reviewService
+      providerType: providerLabel,
     };
 
     if (booking.status === BOOKING_STATUSES.COMPLETED && providerId) {
@@ -403,10 +496,72 @@ const cancelBooking = async ({ bookingId, staffNote, confirmedByStaffId }) => up
   confirmedByStaffId,
 });
 
+// إلغاء الحجز عبر رقم الحجز التسلسلي (مع إرسال إشعارات للطرفين بملاحظة الإدارة)
+const cancelBookingByNumber = async ({ bookingNumber, staffNote, confirmedByStaffId }) => {
+  if (!bookingNumber) {
+    throw new BadRequestError('رقم الحجز مطلوب للإلغاء');
+  }
+
+  let booking = null;
+  const num = Number(bookingNumber);
+
+  if (!Number.isNaN(num)) {
+    booking = await Booking.findOne({ bookingNumber: num });
+    if (!booking) {
+      booking = await NursingBooking.findOne({ bookingNumber: num });
+    }
+  }
+
+  if (!booking && mongoose.Types.ObjectId.isValid(bookingNumber)) {
+    booking = await Booking.findById(bookingNumber);
+    if (!booking) {
+      booking = await NursingBooking.findById(bookingNumber);
+    }
+  }
+
+  if (!booking) {
+    throw new NotFoundError('رقم الحجز غير صحيح أو غير موجود');
+  }
+
+  if (booking.status === BOOKING_STATUSES.CANCELLED || booking.status === BOOKING_STATUSES.COMPLETED) {
+    throw new BadRequestError(`لا يمكن إلغاء حجز حالته بالفعل: ${booking.status}`);
+  }
+
+  const before = booking.toObject();
+
+  booking.status = BOOKING_STATUSES.CANCELLED;
+  if (staffNote !== undefined) {
+    booking.staffNote = staffNote;
+  }
+  if (confirmedByStaffId) {
+    booking.confirmedByStaffId = confirmedByStaffId;
+  }
+
+  await booking.save();
+
+  await logAuditEvent({
+    actorId: confirmedByStaffId || null,
+    actorRole: 'Staff',
+    action: 'BOOKING_CANCELLED_BY_NUMBER',
+    entityType: booking.constructor?.modelName || 'Booking',
+    entityId: booking._id,
+    before,
+    after: booking.toObject(),
+    meta: { bookingNumber: booking.bookingNumber, staffNote },
+  });
+
+  // إرسال الإشعارات للطرفين (المريض ومزود الخدمة) مع ملاحظة الإدارة
+  await sendCancellationNotifications({ booking, staffNote });
+
+  return booking;
+};
+
 module.exports = {
   createDoctorBooking,
   createNursingBooking,
   listPendingBookings,
   updateBookingStatus,
   cancelBooking,
+  cancelBookingByNumber,
+  sendCancellationNotifications,
 };

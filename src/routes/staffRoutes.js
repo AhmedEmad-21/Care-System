@@ -16,9 +16,13 @@ router.get('/bookings', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.l
 
 // إلغاء الحجز بالطريقة العادية
 router.patch('/bookings/:id/cancel', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.cancelBookingHandler);
+router.post('/bookings/:id/cancel', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.cancelBookingHandler);
 
-// إلغاء الحجز برقم الحجز التسلسلي للدعم الفني
+// إلغاء الحجز برقم الحجز التسلسلي للدعم الفني (إلغاء سريع)
 router.patch('/bookings/cancel-by-number/:bookingNumber', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.cancelBookingByNumberHandler);
+router.post('/bookings/cancel-by-number/:bookingNumber', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.cancelBookingByNumberHandler);
+router.patch('/bookings/cancel-by-number', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.cancelBookingByNumberHandler);
+router.post('/bookings/cancel-by-number', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.cancelBookingByNumberHandler);
 
 // عرض تفاصيل حجز واحد بالكامل
 router.get('/bookings/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getBookingDetails);

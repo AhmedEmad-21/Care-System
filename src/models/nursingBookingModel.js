@@ -81,6 +81,19 @@ const nursingBookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// توليد رقم حجز تسلسلي تلقائياً لحجوزات التمريض
+nursingBookingSchema.pre('validate', async function () {
+  if (!this.bookingNumber) {
+    const lastDoc = await mongoose.model('Booking').findOne().sort({ bookingNumber: -1 });
+    const lastNurse = await mongoose.model('NursingBooking').findOne().sort({ bookingNumber: -1 });
+    const maxNum = Math.max(
+      lastDoc && typeof lastDoc.bookingNumber === 'number' ? lastDoc.bookingNumber : 1000,
+      lastNurse && typeof lastNurse.bookingNumber === 'number' ? lastNurse.bookingNumber : 1000
+    );
+    this.bookingNumber = maxNum + 1;
+  }
+});
+
 nursingBookingSchema.index({ requestLocation: '2dsphere' });
 
 module.exports = mongoose.model('NursingBooking', nursingBookingSchema);

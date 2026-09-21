@@ -12,9 +12,12 @@ const postReview = asyncHandler(async (req, res) => {
     bookingId: req.body.bookingId, // <-- تم إضافتها هنا لتمرير الـ bookingId القادم من الفرونت أو الإشعار
   });
 
-  return res.status(201).json({
+  const statusCode = result.isExisting ? 200 : 201;
+  const message = result.isExisting ? 'Review already submitted' : 'Review saved successfully';
+
+  return res.status(statusCode).json({
     success: true,
-    message: 'Review saved successfully',
+    message,
     data: result,
   });
 });

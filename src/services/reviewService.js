@@ -104,13 +104,28 @@ const addReview = async ({ reviewerId, providerId, providerType, rating, comment
       throw new BadRequestError('الحجز المحدد غير موجود، أو لم تتم إصداره كحجز مكتمل لهذا المزود');
     }
 
-    // التحقق عما إذا كان تم تقييم هذا الحجز بالذات مسبقاً لمنع التكرار لنفس الحجز
-    if (completedBooking.isReviewed) {
+    // التحقق عما إذا كان تم تقييم هذا الحجز بالذات مسبقاً (جعل الـ endpoint idempotent لنفس المستخدم)
+    const existingReviewForBooking = await Review.findOne({ bookingId: completedBooking._id }).lean();
+    if (existingReviewForBooking) {
+      if (existingReviewForBooking.patientId.toString() === reviewerId.toString()) {
+        if (!completedBooking.isReviewed) {
+          await BookingModel.findByIdAndUpdate(completedBooking._id, { isReviewed: true });
+        }
+        return {
+          isExisting: true,
+          review: existingReviewForBooking,
+          provider: {
+            id: providerId,
+            providerModel: normalizedProviderType,
+            rating: provider.rating || 0,
+            totalReviews: provider.totalReviews || 0,
+          },
+        };
+      }
       throw new BadRequestError('لقد قمت بالفعل بتقييم هذا الحجز مسبقاً');
     }
 
-    const existingReviewForBooking = await Review.findOne({ bookingId: completedBooking._id }).lean();
-    if (existingReviewForBooking) {
+    if (completedBooking.isReviewed) {
       throw new BadRequestError('لقد قمت بالفعل بتقييم هذا الحجز مسبقاً');
     }
   } else {
@@ -156,6 +171,7 @@ const addReview = async ({ reviewerId, providerId, providerType, rating, comment
     });
 
     return {
+      isExisting: false,
       review,
       provider: {
         id: providerId,
@@ -165,6 +181,21 @@ const addReview = async ({ reviewerId, providerId, providerType, rating, comment
     };
   } catch (err) {
     if (err.code === 11000) {
+      if (completedBooking) {
+        const existingReview = await Review.findOne({ bookingId: completedBooking._id }).lean();
+        if (existingReview && existingReview.patientId.toString() === reviewerId.toString()) {
+          return {
+            isExisting: true,
+            review: existingReview,
+            provider: {
+              id: providerId,
+              providerModel: normalizedProviderType,
+              rating: provider.rating || 0,
+              totalReviews: provider.totalReviews || 0,
+            },
+          };
+        }
+      }
       throw new BadRequestError('لقد قمت بالفعل بتقييم هذا الحجز مسبقاً');
     }
     throw err;
