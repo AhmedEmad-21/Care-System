@@ -52,6 +52,11 @@ const nursingBookingSchema = new mongoose.Schema(
       default: 'pending',
       index: true,
     },
+    isReviewed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     totalCost: {
       type: Number,
       default: 0,

@@ -39,10 +39,15 @@ const listAllBookings = asyncHandler(async (req, res) => {
     .limit(limit ? Number(limit) : 50)
     .lean();
 
+  const formattedBookings = bookings.map((b) => ({
+    ...b,
+    isReviewed: Boolean(b.isReviewed),
+  }));
+
   return res.json({
     success: true,
-    count: bookings.length,
-    data: bookings,
+    count: formattedBookings.length,
+    data: formattedBookings,
   });
 });
 
@@ -208,7 +213,13 @@ const getBookingDetails = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'الحجز غير موجود' });
   }
 
-  return res.json({ success: true, data: booking });
+  return res.json({ 
+    success: true, 
+    data: {
+      ...booking,
+      isReviewed: Boolean(booking.isReviewed),
+    } 
+  });
 });
 
 // 7. جلب الملخص المالي لمزود الخدمة (مُحدث لحساب نسبة وعمولة المنصة والتسويات بدقة)

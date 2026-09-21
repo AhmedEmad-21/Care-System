@@ -105,6 +105,10 @@ const addReview = async ({ reviewerId, providerId, providerType, rating, comment
     }
 
     // التحقق عما إذا كان تم تقييم هذا الحجز بالذات مسبقاً لمنع التكرار لنفس الحجز
+    if (completedBooking.isReviewed) {
+      throw new BadRequestError('لقد قمت بالفعل بتقييم هذا الحجز مسبقاً');
+    }
+
     const existingReviewForBooking = await Review.findOne({ bookingId: completedBooking._id }).lean();
     if (existingReviewForBooking) {
       throw new BadRequestError('لقد قمت بالفعل بتقييم هذا الحجز مسبقاً');
@@ -120,6 +124,7 @@ const addReview = async ({ reviewerId, providerId, providerType, rating, comment
       patientId: reviewerId,
       [providerField]: providerId,
       status: 'completed',
+      isReviewed: false,
       _id: { $nin: alreadyReviewedBookingIds },
     })
       .sort({ updatedAt: -1, createdAt: -1 })
@@ -130,30 +135,40 @@ const addReview = async ({ reviewerId, providerId, providerType, rating, comment
     }
   }
 
-  // إنشاء تقييم جديد مستقل لكل حجز مكتمل
-  const review = await Review.create({
-    patientId: reviewerId,
-    providerId,
-    providerModel: normalizedProviderType,
-    bookingId: completedBooking._id,
-    bookingModel,
-    rating: numericRating,
-    comment: comment ? String(comment).trim() : null,
-  });
-
-  const stats = await updateProviderReviewStats({
-    providerType: normalizedProviderType,
-    providerId,
-  });
-
-  return {
-    review,
-    provider: {
-      id: providerId,
+  try {
+    // إنشاء تقييم جديد مستقل لكل حجز مكتمل
+    const review = await Review.create({
+      patientId: reviewerId,
+      providerId,
       providerModel: normalizedProviderType,
-      ...stats,
-    },
-  };
+      bookingId: completedBooking._id,
+      bookingModel,
+      rating: numericRating,
+      comment: comment ? String(comment).trim() : null,
+    });
+
+    // تحديث حالة الحجز إلى مقيَّم (isReviewed: true)
+    await BookingModel.findByIdAndUpdate(completedBooking._id, { isReviewed: true });
+
+    const stats = await updateProviderReviewStats({
+      providerType: normalizedProviderType,
+      providerId,
+    });
+
+    return {
+      review,
+      provider: {
+        id: providerId,
+        providerModel: normalizedProviderType,
+        ...stats,
+      },
+    };
+  } catch (err) {
+    if (err.code === 11000) {
+      throw new BadRequestError('لقد قمت بالفعل بتقييم هذا الحجز مسبقاً');
+    }
+    throw err;
+  }
 };
 
 const getProviderReviews = async ({ providerId, providerType = null, limit = 100 }) => {

@@ -132,6 +132,7 @@ const getProviderBookings = async ({ userId, status, date }) => {
   // منع أي تكرار مرجعي (Circular Reference) عند وجود أكثر من حجز لنفس المريض
   return allBookings.map((b) => ({
     ...b,
+    isReviewed: Boolean(b.isReviewed),
     patientId: (b.patientId && typeof b.patientId === 'object')
       ? {
           _id: b.patientId._id,

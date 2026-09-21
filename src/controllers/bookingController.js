@@ -127,12 +127,14 @@ const myBookings = asyncHandler(async (req, res) => {
   // فك أي تشابك مرجعي لضمان إرجاع كائنات نقية ومستقلة 100% بدون أي تكرار مرجعي
   const doctorBookings = rawDoctorBookings.map((b) => ({
     ...b,
+    isReviewed: Boolean(b.isReviewed),
     doctorId: (b.doctorId && typeof b.doctorId === 'object') ? { ...b.doctorId } : b.doctorId,
     nurseId: (b.nurseId && typeof b.nurseId === 'object') ? { ...b.nurseId } : b.nurseId,
   }));
 
   const nursingBookings = rawNursingBookings.map((b) => ({
     ...b,
+    isReviewed: Boolean(b.isReviewed),
     nurseId: (b.nurseId && typeof b.nurseId === 'object') ? { ...b.nurseId } : b.nurseId,
     serviceId: (b.serviceId && typeof b.serviceId === 'object') ? { ...b.serviceId } : b.serviceId,
   }));
@@ -176,7 +178,14 @@ const getBookingByIdHandler = asyncHandler(async (req, res) => {
     }
   }
 
-  return res.json({ success: true, data: { ...booking, bookingType: booking.bookingType || type } });
+  return res.json({ 
+    success: true, 
+    data: { 
+      ...booking, 
+      isReviewed: Boolean(booking.isReviewed),
+      bookingType: booking.bookingType || type 
+    } 
+  });
 });
 
 module.exports = { 

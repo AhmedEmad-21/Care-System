@@ -19,6 +19,7 @@ const initReviewReminderCron = () => {
 
       const completedBookings = await Booking.find({
         status: BOOKING_STATUSES.COMPLETED,
+        isReviewed: false,
         updatedAt: {
           $gte: twoWeeksAgoStart,
           $lte: twoWeeksAgoEnd,

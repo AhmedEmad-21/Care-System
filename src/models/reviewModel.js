@@ -46,6 +46,7 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-reviewSchema.index({ patientId: 1, providerId: 1 }, { unique: true });
+reviewSchema.index({ bookingId: 1 }, { unique: true });
+reviewSchema.index({ patientId: 1, providerId: 1 });
 
 module.exports = mongoose.model('Review', reviewSchema);

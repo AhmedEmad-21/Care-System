@@ -83,6 +83,11 @@ const bookingSchema = new mongoose.Schema(
       default: 'pending',
       index: true,
     },
+    isReviewed: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     staffNote: {
       type: String,
       default: null,
