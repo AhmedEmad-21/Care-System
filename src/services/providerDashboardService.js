@@ -178,17 +178,19 @@ const scheduleBooking = async ({ userId, bookingId, appointmentTime, status }) =
         });
       }
 
+      const bookingNumStr = booking.bookingNumber ? `رقم #${booking.bookingNumber} ` : '';
       const notifBody = timeFormatted
-        ? `تم تأكيد موعد حجزك مع ${providerTitle} في تمام الساعة ${timeFormatted}.`
-        : `تم تأكيد حجزك مع ${providerTitle}.`;
+        ? `تم تأكيد موعد حجزك ${bookingNumStr}مع ${providerTitle} في تمام الساعة ${timeFormatted}.`
+        : `تم تأكيد حجزك ${bookingNumStr}مع ${providerTitle}.`;
 
       await sendNotificationToUser({
         userId: booking.patientId,
-        title: 'تأكيد موعد الحجز 🗓️',
+        title: `تأكيد موعد الحجز ${bookingNumStr}🗓️`,
         body: notifBody,
         type: 'booking',
         data: {
           bookingId: String(booking._id),
+          bookingNumber: String(booking.bookingNumber || ''),
           status: String(booking.status),
           appointmentTime: String(booking.appointmentTime || '')
         }
@@ -219,6 +221,7 @@ const updateBookingStatusService = async ({ userId, bookingId, status }) => {
   if (booking.patientId) {
     try {
       const providerTitle = type === 'doctor' ? `د. ${providerDoc.name}` : `الممرض ${providerDoc.name}`;
+      const bookingNumStr = booking.bookingNumber ? `رقم #${booking.bookingNumber} ` : '';
       let statusArabic = status;
       if (status === 'completed') statusArabic = 'اكتملت الزيارة بنجاح ✅';
       else if (status === 'cancelled') statusArabic = 'تم إلغاء الحجز ❌';
@@ -226,11 +229,12 @@ const updateBookingStatusService = async ({ userId, bookingId, status }) => {
 
       await sendNotificationToUser({
         userId: booking.patientId,
-        title: `تحديث حالة الحجز: ${statusArabic}`,
-        body: `تم تحديث حالة طلب الحجز الخاص بك مع ${providerTitle} إلى (${statusArabic}).`,
+        title: `تحديث حالة الحجز ${bookingNumStr}: ${statusArabic}`,
+        body: `تم تحديث حالة طلب الحجز ${bookingNumStr}الخاص بك مع ${providerTitle} إلى (${statusArabic}).`,
         type: 'booking',
         data: {
           bookingId: String(booking._id),
+          bookingNumber: String(booking.bookingNumber || ''),
           status: String(booking.status)
         }
       });

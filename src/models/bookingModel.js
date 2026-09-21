@@ -102,13 +102,12 @@ const bookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// توليد رقم حجز تسلسلي تلقائياً قبل التحقق والحفظ (بدون استخدام next مع الـ async)
+// توليد رقم حجز تسلسلي تلقائياً قبل التحقق والحفظ (مشترك بين الأطباء والتمريض)
+const { getNextSharedBookingNumber } = require('../utils/bookingNumberUtils');
+
 bookingSchema.pre('validate', async function () {
   if (!this.bookingNumber) {
-    const lastBooking = await mongoose.model('Booking').findOne().sort({ bookingNumber: -1 });
-    this.bookingNumber = lastBooking && typeof lastBooking.bookingNumber === 'number' 
-      ? lastBooking.bookingNumber + 1 
-      : 1000;
+    this.bookingNumber = await getNextSharedBookingNumber();
   }
 });
 

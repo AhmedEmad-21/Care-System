@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getNextSharedBookingNumber } = require('../utils/bookingNumberUtils');
 
 const bookingStatuses = ['pending', 'confirmed', 'cancelled', 'completed', 'rejected'];
 
@@ -21,6 +22,13 @@ const geoPointSchema = new mongoose.Schema(
 
 const nursingBookingSchema = new mongoose.Schema(
   {
+    // رقم حجز تسلسلي تصاعدي مشترك (1000, 1001, ...)
+    bookingNumber: {
+      type: Number,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
     patientId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -81,16 +89,10 @@ const nursingBookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// توليد رقم حجز تسلسلي تلقائياً لحجوزات التمريض
+// توليد رقم حجز تسلسلي تلقائياً لحجوزات التمريض مشترك مع الأطباء
 nursingBookingSchema.pre('validate', async function () {
   if (!this.bookingNumber) {
-    const lastDoc = await mongoose.model('Booking').findOne().sort({ bookingNumber: -1 });
-    const lastNurse = await mongoose.model('NursingBooking').findOne().sort({ bookingNumber: -1 });
-    const maxNum = Math.max(
-      lastDoc && typeof lastDoc.bookingNumber === 'number' ? lastDoc.bookingNumber : 1000,
-      lastNurse && typeof lastNurse.bookingNumber === 'number' ? lastNurse.bookingNumber : 1000
-    );
-    this.bookingNumber = maxNum + 1;
+    this.bookingNumber = await getNextSharedBookingNumber();
   }
 });
 

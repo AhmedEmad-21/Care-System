@@ -105,7 +105,6 @@ const createDoctorBooking = async ({
   let resolvedDoctorId = doctorId || null;
 
   if (resolvedDoctorId) {
-    // محاولة إيجاد الطبيب بالـ _id أو بـ userId للتوافق التام
     resolvedDoctor = await Doctor.findById(resolvedDoctorId).lean();
     if (!resolvedDoctor) {
       resolvedDoctor = await Doctor.findOne({ userId: resolvedDoctorId }).lean();
@@ -145,7 +144,6 @@ const createDoctorBooking = async ({
     }
   }
 
-  // نوع الحجز: regular أو urgent
   const normalizedBookingType = (bookingType || priceType || consultationType || 'regular').toLowerCase();
   const finalBookingType = normalizedBookingType === 'urgent' ? 'urgent' : 'regular';
 
@@ -156,7 +154,6 @@ const createDoctorBooking = async ({
     bookingType: finalBookingType
   });
 
-  // جلب اللوكيشن المسجل لليوزر تلقائياً لو الفرونت مابعتهوش
   let finalLocation = requestLocation;
   if (!finalLocation || !finalLocation.coordinates) {
     const user = await User.findById(patientId).lean();
@@ -204,10 +201,11 @@ const createDoctorBooking = async ({
 
     if (targetUserId) {
       const bookingTypeLabel = finalBookingType === 'urgent' ? 'مستعجل ⚡' : 'عادي';
+      const bookingNumStr = booking.bookingNumber ? `رقم #${booking.bookingNumber} ` : '';
       await sendNotificationToUser({
         userId: targetUserId,
-        title: `طلب حجز جديد (${bookingTypeLabel}) 🩺`,
-        body: `لديك طلب حجز جديد (${bookingTypeLabel}) من المريض (${patientName}) بقيمة ${totalCost} ج.م. يرجى الدخول لتحديد موعد الكشف وتأكيد الحجز.`,
+        title: `طلب حجز جديد ${bookingNumStr}(${bookingTypeLabel}) 🩺`,
+        body: `لديك طلب حجز جديد ${bookingNumStr}(${bookingTypeLabel}) من المريض (${patientName}) بقيمة ${totalCost} ج.م. يرجى الدخول لتحديد موعد الكشف وتأكيد الحجز.`,
         type: 'booking',
         data: {
           bookingId: String(booking._id),
@@ -255,7 +253,6 @@ const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLoca
     }
   }
 
-  // جلب اللوكيشن المسجل لليوزر تلقائياً لو الفرونت مابعتهوش
   let finalLocation = requestLocation;
   if (!finalLocation || !finalLocation.coordinates) {
     const user = await User.findById(patientId).lean();
@@ -278,7 +275,7 @@ const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLoca
     status: BOOKING_STATUSES.PENDING,
   });
 
-  // إرسال إشعار فوري وتلقائي للممرض
+  // إرسال إشعار فوري وتلقائي للممرض متضمناً رقم الحجز
   try {
     const patientUser = await User.findById(patientId).select('name phoneNumber').lean();
     const patientName = patientUser?.name || 'مريض';
@@ -290,13 +287,15 @@ const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLoca
     }
 
     if (targetUserId) {
+      const bookingNumStr = booking.bookingNumber ? `رقم #${booking.bookingNumber} ` : '';
       await sendNotificationToUser({
         userId: targetUserId,
-        title: 'طلب خدمة تمريضية جديد 🩺',
-        body: `لديك طلب خدمة تمريضية جديد من المريض (${patientName}). يرجى الدخول لتحديد الموعد وتأكيد الحجز.`,
+        title: `طلب خدمة تمريضية جديد ${bookingNumStr}🩺`,
+        body: `لديك طلب خدمة تمريضية جديد ${bookingNumStr}من المريض (${patientName}). يرجى الدخول لتحديد الموعد وتأكيد الحجز.`,
         type: 'booking',
         data: {
           bookingId: String(booking._id),
+          bookingNumber: String(booking.bookingNumber || ''),
           patientId: String(patientId),
           serviceId: String(serviceId),
           type: 'nursing'
@@ -326,7 +325,6 @@ const sendCancellationNotifications = async ({ booking, staffNote }) => {
     let providerTitle = 'مقدم الخدمة';
     let providerUserId = null;
 
-    // 1. تحديد بيانات ومسمى مقدم الخدمة (طبيب أو ممرض)
     if (booking.doctorId) {
       const doctorDoc = await Doctor.findById(booking.doctorId).select('name userId phoneNumber').lean();
       if (doctorDoc) {
@@ -354,7 +352,6 @@ const sendCancellationNotifications = async ({ booking, staffNote }) => {
     const bookingNumStr = booking.bookingNumber ? `رقم #${booking.bookingNumber}` : '';
     const noteText = staffNote && String(staffNote).trim() ? String(staffNote).trim() : null;
 
-    // 2. إرسال إشعار فوري لمزود الخدمة (طبيب أو ممرض)
     if (providerUserId) {
       const providerBody = noteText
         ? `تم إلغاء الحجز ${bookingNumStr} من قبل الإدارة. ملاحظة الإلغاء: "${noteText}".`
@@ -375,7 +372,6 @@ const sendCancellationNotifications = async ({ booking, staffNote }) => {
       }).catch((err) => console.error('Failed sending cancel notification to provider:', err.message));
     }
 
-    // 3. إرسال إشعار فوري للمريض
     if (booking.patientId) {
       const patientBody = noteText
         ? `تم إلغاء موعد حجزك ${bookingNumStr} مع ${providerTitle}. ملاحظة الإدارة: "${noteText}".`
@@ -444,32 +440,33 @@ const updateBookingStatus = async ({ bookingId, status, appointmentTime, staffNo
     meta: { status, appointmentTime, staffNote },
   });
 
-  // في حال الإلغاء، يتم إرسال الإشعار بملاحظة الإدارة للطرفين فوراً
   if (booking.status === BOOKING_STATUSES.CANCELLED) {
     await sendCancellationNotifications({ booking, staffNote });
     return booking;
   }
 
-  const providerLabel = booking.doctorId ? 'Doctor' : booking.nurseId ? 'Nurse' : 'Provider';
+  const providerLabel = booking.doctorId ? 'الطبيب' : booking.nurseId ? 'الممرض' : 'مزود الخدمة';
   const providerId = booking.doctorId || booking.nurseId;
+  const bookingNumStr = booking.bookingNumber ? `رقم #${booking.bookingNumber} ` : '';
   
   const notificationTitleMap = {
-    [BOOKING_STATUSES.CONFIRMED]: 'تم تأكيد الحجز',
-    [BOOKING_STATUSES.COMPLETED]: 'تم إكمال الحجز',
-    [BOOKING_STATUSES.REJECTED]: 'تم رفض الحجز',
+    [BOOKING_STATUSES.CONFIRMED]: `تم تأكيد الحجز ${bookingNumStr}`,
+    [BOOKING_STATUSES.COMPLETED]: `تم إكمال الحجز ${bookingNumStr}`,
+    [BOOKING_STATUSES.REJECTED]: `تم رفض الحجز ${bookingNumStr}`,
   };
 
   const notificationBodyMap = {
-    [BOOKING_STATUSES.CONFIRMED]: `تم تأكيد موعدك مع ${providerLabel} بنجاح`,
-    [BOOKING_STATUSES.COMPLETED]: `تم إتمام زيارتك بنجاح. نرجو منك تقييم تجربتك ⭐`,
-    [BOOKING_STATUSES.REJECTED]: `تم رفض طلب الحجز الخاص بك`,
+    [BOOKING_STATUSES.CONFIRMED]: `تم تأكيد موعد حجزك ${bookingNumStr}مع ${providerLabel} بنجاح`,
+    [BOOKING_STATUSES.COMPLETED]: `تم إتمام زيارتك ${bookingNumStr}بنجاح. نرجو منك تقييم تجربتك ⭐`,
+    [BOOKING_STATUSES.REJECTED]: `تم رفض طلب الحجز ${bookingNumStr}الخاص بك`,
   };
 
   if (booking.patientId && notificationTitleMap[booking.status]) {
     const notificationData = {
       bookingId: booking._id.toString(),
+      bookingNumber: String(booking.bookingNumber || ''),
       status: booking.status,
-      providerType: providerLabel,
+      providerType: booking.doctorId ? 'Doctor' : booking.nurseId ? 'Nurse' : 'Provider',
     };
 
     if (booking.status === BOOKING_STATUSES.COMPLETED && providerId) {
@@ -483,7 +480,7 @@ const updateBookingStatus = async ({ bookingId, status, appointmentTime, staffNo
       body: notificationBodyMap[booking.status],
       type: booking.status === BOOKING_STATUSES.COMPLETED ? 'review_prompt' : 'booking_status',
       data: notificationData,
-    });
+    }).catch((err) => console.error('Error sending booking status notification:', err.message));
   }
 
   return booking;
