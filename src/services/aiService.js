@@ -1,6 +1,7 @@
 const { OpenAI } = require('openai');
 const User = require('../models/userModel');
 const { NotFoundError, TooManyRequestsError, ServiceUnavailableError } = require('../errors/appErrors');
+const { resolveCanonicalSpecialty } = require('./matchingService');
 
 const MAX_DAILY_AI_ATTEMPTS = 4;
 
@@ -93,17 +94,19 @@ const getSuggestedSpecialty = async (patientId, symptoms) => {
       max_tokens: 600,
     });
 
-    const specialty = completion.choices[0]?.message?.content?.trim();
-
-    if (!specialty) {
+    const rawSpecialty = completion.choices[0]?.message?.content?.trim();
+    if (!rawSpecialty) {
       throw new ServiceUnavailableError('The AI provider returned an empty specialty result.');
     }
+
+    const cleanedSpecialty = rawSpecialty.replace(/[*_#"`]/g, '').trim();
+    const specialty = await resolveCanonicalSpecialty(cleanedSpecialty);
 
     patient.aiAnalysisAttempts += 1;
     patient.lastAiAnalysisDate = new Date();
     await patient.save();
 
-    console.log('✅ AI Analysis success! Suggested specialty:', specialty);
+    console.log('✅ AI Analysis success! Raw:', rawSpecialty, '-> Canonical:', specialty);
     return specialty;
   } catch (error) {
     if (error instanceof TooManyRequestsError || error instanceof NotFoundError) {

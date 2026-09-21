@@ -2,50 +2,91 @@ const Doctor = require('../models/doctorModel');
 const AISession = require('../models/aiSessionModel');
 const config = require('../config/appConfig');
 
+const CANONICAL_SPECIALTIES = [
+  'باطنة',
+  'أطفال وحديثي الولادة',
+  'أمراض النساء والتوليد وتأخر الإنجاب',
+  'العظام والمفاصل والعمود الفقري',
+  'القلب والأوعية الدموية',
+  'الصدر والجهاز التنفسي',
+  'المخ والأعصاب والطب النفسي',
+  'جهاز هضمي وكبد ومناظير',
+  'الأنف والأذن والحنجرة',
+  'الجلدية والتناسلية والتجميل',
+  'الرمد',
+  'الأسنان',
+  'الجراحة العامة وجراحة المناظير',
+  'الكلى والمسالك البولية',
+  'العلاج الطبيعي والتأهيل'
+];
+
 const SPECIALTY_RULES = [
-  { keywords: ['chest', 'heart', 'pressure', 'cardio'], specialty: 'Cardiology', confidence: 0.93 },
-  { keywords: ['skin', 'rash', 'allergy', 'itch'], specialty: 'Dermatology', confidence: 0.88 },
-  { keywords: ['eye', 'vision', 'sight'], specialty: 'Ophthalmology', confidence: 0.84 },
-  { keywords: ['bone', 'joint', 'back', 'fracture'], specialty: 'Orthopedics', confidence: 0.87 },
-  { keywords: ['fever', 'cough', 'cold', 'flu'], specialty: 'Internal Medicine', confidence: 0.71 },
+  { keywords: ['chest', 'heart', 'pressure', 'cardio', 'صدر', 'قلب', 'نبض', 'خفقان'], specialty: 'القلب والأوعية الدموية', confidence: 0.93 },
+  { keywords: ['skin', 'rash', 'allergy', 'itch', 'جلد', 'حبوب', 'هرش', 'طفح'], specialty: 'الجلدية والتناسلية والتجميل', confidence: 0.88 },
+  { keywords: ['eye', 'vision', 'sight', 'عين', 'رمد', 'زغللة'], specialty: 'الرمد', confidence: 0.84 },
+  { keywords: ['bone', 'joint', 'back', 'fracture', 'عظم', 'مفصل', 'ظهر', 'ركبة', 'كسر'], specialty: 'العظام والمفاصل والعمود الفقري', confidence: 0.87 },
+  { keywords: ['fever', 'cough', 'cold', 'flu', 'مغص', 'معدة', 'بطن', 'سخونة'], specialty: 'باطنة', confidence: 0.71 },
 ];
 
 const inferSpecialty = (symptoms) => {
   const normalized = String(symptoms || '').toLowerCase();
   const rule = SPECIALTY_RULES.find((entry) => entry.keywords.some((keyword) => normalized.includes(keyword)));
-  return rule || { specialty: 'General Medicine', confidence: 0.5 };
+  return rule || { specialty: 'باطنة', confidence: 0.5 };
 };
 
 const SPECIALTY_ALIASES = [
-  { aliases: ['general medicine', 'internal medicine', 'باطنة', 'باطنه'], canonical: 'General Medicine' },
-  { aliases: ['cardiology', 'cardio', 'قلب', 'أمراض القلب', 'امراض القلب'], canonical: 'Cardiology' },
-  { aliases: ['dermatology', 'skin', 'جلدية', 'جلديه'], canonical: 'Dermatology' },
-  { aliases: ['ophthalmology', 'eye', 'عيون'], canonical: 'Ophthalmology' },
-  { aliases: ['orthopedics', 'orthopedic', 'bone', 'joint', 'عظام', 'عظام ومفاصل'], canonical: 'Orthopedics' },
-  { aliases: ['neurology', 'neuro', 'brain', 'مخ وأعصاب', 'مخ واعصاب'], canonical: 'Neurology' },
-  { aliases: ['pediatrics', 'children', 'اطفال', 'أطفال'], canonical: 'Pediatrics' },
-  { aliases: ['gynecology', 'obstetrics', 'نساء', 'نسائية', 'نساء وتوليد'], canonical: 'Gynecology' },
+  { aliases: ['general medicine', 'internal medicine', 'باطنة', 'باطنه', 'باطني'], canonical: 'باطنة' },
+  { aliases: ['cardiology', 'cardio', 'heart', 'قلب', 'أمراض القلب', 'القلب والأوعية الدموية', 'اوعية دموية', 'أوعية دموية'], canonical: 'القلب والأوعية الدموية' },
+  { aliases: ['dermatology', 'skin', 'جلدية', 'جلديه', 'الجلدية والتناسلية والتجميل', 'تناسلية', 'تجميل'], canonical: 'الجلدية والتناسلية والتجميل' },
+  { aliases: ['ophthalmology', 'eye', 'عيون', 'رمد', 'الرمد'], canonical: 'الرمد' },
+  { aliases: ['orthopedics', 'orthopedic', 'bone', 'joint', 'عظام', 'عظام ومفاصل', 'العظام والمفاصل والعمود الفقري', 'عمود فقري'], canonical: 'العظام والمفاصل والعمود الفقري' },
+  { aliases: ['neurology', 'neuro', 'brain', 'psychiatry', 'مخ وأعصاب', 'مخ واعصاب', 'نفسي', 'المخ والأعصاب والطب النفسي'], canonical: 'المخ والأعصاب والطب النفسي' },
+  { aliases: ['pediatrics', 'children', 'اطفال', 'أطفال', 'أطفال وحديثي الولادة', 'حديثي الولادة'], canonical: 'أطفال وحديثي الولادة' },
+  { aliases: ['gynecology', 'obstetrics', 'نساء', 'نسائية', 'نساء وتوليد', 'أمراض النساء والتوليد وتأخر الإنجاب', 'تأخر الإنجاب'], canonical: 'أمراض النساء والتوليد وتأخر الإنجاب' },
+  { aliases: ['pulmonology', 'chest', 'respiratory', 'صدر', 'جهاز تنفسي', 'الصدر والجهاز التنفسي'], canonical: 'الصدر والجهاز التنفسي' },
+  { aliases: ['gastroenterology', 'gi', 'liver', 'endoscopy', 'جهاز هضمي', 'كبد', 'مناظير', 'جهاز هضمي وكبد ومناظير'], canonical: 'جهاز هضمي وكبد ومناظير' },
+  { aliases: ['ent', 'ear', 'nose', 'throat', 'أنف وأذن', 'انف واذن', 'حنجرة', 'الأنف والأذن والحنجرة'], canonical: 'الأنف والأذن والحنجرة' },
+  { aliases: ['dentistry', 'dental', 'teeth', 'أسنان', 'اسنان', 'سنان', 'الأسنان'], canonical: 'الأسنان' },
+  { aliases: ['surgery', 'general surgery', 'جراحة', 'جراحة عامة', 'الجراحة العامة وجراحة المناظير'], canonical: 'الجراحة العامة وجراحة المناظير' },
+  { aliases: ['urology', 'nephrology', 'كلى', 'مسالك', 'مسالك بولية', 'الكلى والمسالك البولية'], canonical: 'الكلى والمسالك البولية' },
+  { aliases: ['physiotherapy', 'rehabilitation', 'علاج طبيعي', 'تأهيل', 'العلاج الطبيعي والتأهيل'], canonical: 'العلاج الطبيعي والتأهيل' }
 ];
 
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 
 const resolveCanonicalSpecialty = async (specialty) => {
   const requested = normalizeText(specialty);
-  if (!requested) return 'General Medicine';
+  if (!requested) return 'باطنة';
 
-  const existingSpecialties = await Doctor.distinct('specialization');
-  const existingNormalized = existingSpecialties.map((entry) => ({ raw: entry, normalized: normalizeText(entry) }));
+  // 1. إذا كانت القيمة المطلوبة تطابق إحدى التخصصات المعتمدة الرسمية الـ 15 مباشرة
+  const exactCanonical = CANONICAL_SPECIALTIES.find(
+    (canon) => normalizeText(canon) === requested
+  );
+  if (exactCanonical) return exactCanonical;
 
-  const exactMatch = existingNormalized.find((entry) => entry.normalized === requested);
-  if (exactMatch) return exactMatch.raw;
-
-  const aliasMatch = SPECIALTY_ALIASES.find((entry) => entry.aliases.some((alias) => requested === normalizeText(alias) || requested.includes(normalizeText(alias))));
+  // 2. البحث في جدول المرادفات والأسماء البديلة (سواء إنجليزي أو عربي دارج)
+  const aliasMatch = SPECIALTY_ALIASES.find((entry) => 
+    entry.aliases.some((alias) => {
+      const normAlias = normalizeText(alias);
+      return requested === normAlias || requested.includes(normAlias) || normAlias.includes(requested);
+    })
+  );
   if (aliasMatch) {
-    const canonicalExisting = existingNormalized.find((entry) => entry.normalized === normalizeText(aliasMatch.canonical));
-    return canonicalExisting?.raw || aliasMatch.canonical;
+    return aliasMatch.canonical;
   }
 
-  return aliasMatch?.canonical || 'General Medicine';
+  // 3. التحقق من التخصصات المسجلة حالياً في قاعدة البيانات للأطباء كإجراء احتياطي
+  try {
+    const existingSpecialties = await Doctor.distinct('specialization');
+    const existingNormalized = existingSpecialties.map((entry) => ({ raw: entry, normalized: normalizeText(entry) }));
+
+    const exactDbMatch = existingNormalized.find((entry) => entry.normalized === requested);
+    if (exactDbMatch) return exactDbMatch.raw;
+  } catch (err) {
+    // تجاهل خطأ الاتصال في حال كانت قاعدة البيانات غير متصلة
+  }
+
+  return 'باطنة';
 };
 
 const { getTodayDateString } = require('../utils/dateUtils');
@@ -179,6 +220,7 @@ const getAlternativeDoctors = async ({ sessionId, excludedDoctorId, requestLocat
 };
 
 module.exports = {
+  CANONICAL_SPECIALTIES,
   inferSpecialty,
   resolveCanonicalSpecialty,
   findDoctorsForSpecialty,

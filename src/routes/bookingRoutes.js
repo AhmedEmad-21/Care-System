@@ -12,6 +12,7 @@ const router = express.Router();
 router.post('/doctor', authMW, validateAjvMW(bookingCreateSchema), bookingController.createDoctorBookingHandler);
 router.post('/nursing', authMW, validateAjvMW(require('../utils/nursingBookingValidate')), bookingController.createNursingBookingHandler);
 router.get('/my-bookings', authMW, bookingController.myBookings);
+router.get('/my', authMW, bookingController.myBookings);
 router.get('/:id', authMW, bookingController.getBookingByIdHandler);
 
 module.exports = router;

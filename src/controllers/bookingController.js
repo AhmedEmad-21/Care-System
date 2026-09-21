@@ -3,6 +3,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const Booking = require('../models/bookingModel');
 const NursingBooking = require('../models/nursingBookingModel');
 const Doctor = require('../models/doctorModel');
+const Review = require('../models/reviewModel');
 const { createDoctorBooking, createNursingBooking } = require('../services/bookingService');
 
 const DOCTOR_POPULATE_FIELDS = 'name specialization description basePrice urgentPrice profileImage rating totalReviews address phoneNumber workingHours offDays location';
@@ -124,20 +125,52 @@ const myBookings = asyncHandler(async (req, res) => {
     });
   }
 
-  // فك أي تشابك مرجعي لضمان إرجاع كائنات نقية ومستقلة 100% بدون أي تكرار مرجعي
-  const doctorBookings = rawDoctorBookings.map((b) => ({
-    ...b,
-    isReviewed: Boolean(b.isReviewed),
-    doctorId: (b.doctorId && typeof b.doctorId === 'object') ? { ...b.doctorId } : b.doctorId,
-    nurseId: (b.nurseId && typeof b.nurseId === 'object') ? { ...b.nurseId } : b.nurseId,
-  }));
+  // جلب كافة التقييمات المرتبطة بالحجوزات المسترجعة لربطها مباشرة
+  const allBookingIds = [
+    ...rawDoctorBookings.map((b) => b._id),
+    ...rawNursingBookings.map((b) => b._id),
+  ];
 
-  const nursingBookings = rawNursingBookings.map((b) => ({
-    ...b,
-    isReviewed: Boolean(b.isReviewed),
-    nurseId: (b.nurseId && typeof b.nurseId === 'object') ? { ...b.nurseId } : b.nurseId,
-    serviceId: (b.serviceId && typeof b.serviceId === 'object') ? { ...b.serviceId } : b.serviceId,
-  }));
+  const reviews = await Review.find({
+    bookingId: { $in: allBookingIds },
+  })
+    .select('bookingId rating comment')
+    .lean();
+
+  const reviewMap = new Map();
+  reviews.forEach((r) => {
+    reviewMap.set(r.bookingId.toString(), {
+      rating: r.rating,
+      comment: r.comment || '',
+    });
+  });
+
+  // فك أي تشابك مرجعي لضمان إرجاع كائنات نقية ومستقلة 100% بدون أي تكرار مرجعي
+  const doctorBookings = rawDoctorBookings.map((b) => {
+    const reviewData = reviewMap.get(b._id.toString()) || null;
+    const isReviewed = Boolean(b.isReviewed) || Boolean(reviewData);
+
+    return {
+      ...b,
+      isReviewed,
+      review: isReviewed ? (reviewData || null) : null,
+      doctorId: (b.doctorId && typeof b.doctorId === 'object') ? { ...b.doctorId } : b.doctorId,
+      nurseId: (b.nurseId && typeof b.nurseId === 'object') ? { ...b.nurseId } : b.nurseId,
+    };
+  });
+
+  const nursingBookings = rawNursingBookings.map((b) => {
+    const reviewData = reviewMap.get(b._id.toString()) || null;
+    const isReviewed = Boolean(b.isReviewed) || Boolean(reviewData);
+
+    return {
+      ...b,
+      isReviewed,
+      review: isReviewed ? (reviewData || null) : null,
+      nurseId: (b.nurseId && typeof b.nurseId === 'object') ? { ...b.nurseId } : b.nurseId,
+      serviceId: (b.serviceId && typeof b.serviceId === 'object') ? { ...b.serviceId } : b.serviceId,
+    };
+  });
 
   return res.json({ success: true, data: { doctorBookings, nursingBookings } });
 });
@@ -178,11 +211,26 @@ const getBookingByIdHandler = asyncHandler(async (req, res) => {
     }
   }
 
+  let reviewData = null;
+  const foundReview = await Review.findOne({ bookingId: booking._id })
+    .select('rating comment')
+    .lean();
+
+  if (foundReview) {
+    reviewData = {
+      rating: foundReview.rating,
+      comment: foundReview.comment || '',
+    };
+  }
+
+  const isReviewed = Boolean(booking.isReviewed) || Boolean(reviewData);
+
   return res.json({ 
     success: true, 
     data: { 
       ...booking, 
-      isReviewed: Boolean(booking.isReviewed),
+      isReviewed,
+      review: isReviewed ? reviewData : null,
       bookingType: booking.bookingType || type 
     } 
   });
