@@ -2,7 +2,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const reviewService = require('../services/reviewService');
 
 const postReview = asyncHandler(async (req, res) => {
-  const reviewerId = req.user.id || req.user._id;
+  const reviewerId = String(req.user.id || req.user._id);
   const result = await reviewService.addReview({
     reviewerId,
     providerId: req.body.providerId,

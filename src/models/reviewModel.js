@@ -24,7 +24,6 @@ const reviewSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       required: true,
       refPath: 'bookingModel',
-      index: true,
     },
     bookingModel: {
       type: String,
