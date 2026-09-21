@@ -33,8 +33,8 @@ const listAllBookings = asyncHandler(async (req, res) => {
 
   const bookings = await Booking.find(query)
     .populate('patientId', 'name phoneNumber')
-    .populate('doctorId', 'name specialization')
-    .populate('nurseId', 'name')
+    .populate('doctorId', 'name specialization description')
+    .populate('nurseId', 'name description')
     .sort({ createdAt: -1 })
     .limit(limit ? Number(limit) : 50)
     .lean();
@@ -199,8 +199,8 @@ const settleBookings = asyncHandler(async (req, res) => {
 const getBookingDetails = asyncHandler(async (req, res) => {
   const booking = await Booking.findById(req.params.id)
     .populate('patientId', 'name phoneNumber email')
-    .populate('doctorId', 'name specialization commissionRate basePrice urgentPrice')
-    .populate('nurseId', 'name commissionRate')
+    .populate('doctorId', 'name specialization commissionRate basePrice urgentPrice description')
+    .populate('nurseId', 'name commissionRate description')
     .populate('confirmedByStaffId', 'name')
     .lean();
 
@@ -311,12 +311,20 @@ const providerAvailability = asyncHandler(async (req, res) => {
 
 const doctorsStatus = asyncHandler(async (req, res) => {
   const doctors = await Doctor.find().lean();
-  return res.json({ success: true, data: doctors });
+  const formattedDoctors = doctors.map((doc) => ({
+    ...doc,
+    description: doc.description || '',
+  }));
+  return res.json({ success: true, data: formattedDoctors });
 });
 
 const nursesStatus = asyncHandler(async (req, res) => {
   const nurses = await Nurse.find().lean();
-  return res.json({ success: true, data: nurses });
+  const formattedNurses = nurses.map((nurse) => ({
+    ...nurse,
+    description: nurse.description || '',
+  }));
+  return res.json({ success: true, data: formattedNurses });
 });
 
 // 8.5 إحصائيات وتحليلات شاملة للوحة تحكم الـ Staff
@@ -887,10 +895,15 @@ const listDoctorsForStaff = asyncHandler(async (req, res) => {
     .limit(maxLimit)
     .lean();
 
+  const formattedDoctors = doctors.map((doc) => ({
+    ...doc,
+    description: doc.description || '',
+  }));
+
   return res.json({
     success: true,
-    count: doctors.length,
-    data: doctors,
+    count: formattedDoctors.length,
+    data: formattedDoctors,
   });
 });
 
@@ -917,10 +930,15 @@ const listNursesForStaff = asyncHandler(async (req, res) => {
     .limit(maxLimit)
     .lean();
 
+  const formattedNurses = nurses.map((nurse) => ({
+    ...nurse,
+    description: nurse.description || '',
+  }));
+
   return res.json({
     success: true,
-    count: nurses.length,
-    data: nurses,
+    count: formattedNurses.length,
+    data: formattedNurses,
   });
 });
 

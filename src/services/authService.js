@@ -84,7 +84,7 @@ const attachProfile = async (userDoc) => {
         await Doctor.findByIdAndUpdate(doc._id, { userId: user._id });
       }
     }
-    user.profile = doc;
+    user.profile = doc ? { ...doc, description: doc.description || '' } : null;
     user.photo = resolveProfileImage(user.profileImage);
     if (user.profile) user.profile.photo = user.photo;
   }
@@ -96,7 +96,7 @@ const attachProfile = async (userDoc) => {
         await Nurse.findByIdAndUpdate(nurse._id, { userId: user._id });
       }
     }
-    user.profile = nurse;
+    user.profile = nurse ? { ...nurse, description: nurse.description || '' } : null;
   }
   return user;
 };

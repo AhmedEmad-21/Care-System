@@ -78,9 +78,11 @@ const searchDoctors = asyncHandler(async (req, res) => {
 
   const doctorsFound = doctors.map((doc) => ({
     id: doc._id,
+    _id: doc._id,
     name: doc.name,
     specialization: doc.specialization,
     description: doc.description || '',
+    profileImage: doc.profileImage || null,
     distance: doc.dist?.calculated ? formatDistance(doc.dist.calculated / 1000) : null,
     basePrice: doc.basePrice,
     urgentPrice: doc.urgentPrice,
@@ -114,9 +116,11 @@ const getAlternatives = asyncHandler(async (req, res) => {
 
   const formattedAlternatives = alternativeDoctors.map((doc) => ({
     id: doc._id,
+    _id: doc._id,
     name: doc.name,
     specialization: doc.specialization,
     description: doc.description || '',
+    profileImage: doc.profileImage || null,
     distance: doc.dist?.calculated ? formatDistance(doc.dist.calculated / 1000) : null,
     isAvailable: doc.isAvailable,
     basePrice: doc.basePrice,

@@ -490,6 +490,7 @@ const getProviderProfileService = async ({ userId }) => {
 
   return {
     ...providerDoc,
+    description: providerDoc.description || '',
     type,
     isAvailableToday,
     isDateBlocked,
