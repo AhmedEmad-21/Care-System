@@ -13,6 +13,7 @@ router.get('/bookings', controller.listBookings);
 
 // جدولة الحجز وتحديد موعد بمعرفة المزود
 router.patch('/bookings/:id/schedule', controller.setBookingSchedule);
+router.put('/bookings/:id/schedule', controller.setBookingSchedule);
 
 // تغيير حالة الحجز (completed, cancelled, etc.)
 router.patch('/bookings/:id/status', controller.changeBookingStatus);

@@ -158,7 +158,12 @@ const scheduleBooking = async ({ userId, bookingId, appointmentTime, status }) =
 
   if (!booking) throw new NotFoundError('الحجز غير موجود أو ليس لديك صلاحية عليه');
 
-  if (appointmentTime) booking.appointmentTime = appointmentTime;
+  if (appointmentTime) {
+    if (new Date(appointmentTime) < new Date()) {
+      throw new BadRequestError('تاريخ/وقت الموعد لا يمكن أن يكون في الماضي');
+    }
+    booking.appointmentTime = appointmentTime;
+  }
   if (status) booking.status = status;
 
   await booking.save();

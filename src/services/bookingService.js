@@ -131,6 +131,10 @@ const createDoctorBooking = async ({
     appointmentTime,
   });
 
+  if (appointmentTime && new Date(appointmentTime) < new Date()) {
+    throw new BadRequestError('تاريخ/وقت الموعد لا يمكن أن يكون في الماضي');
+  }
+
   if (resolvedDoctor && appointmentTime) {
     const targetDate = new Date(appointmentTime);
     const targetDateStr = getTodayDateString(targetDate);
@@ -239,6 +243,10 @@ const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLoca
     patientId,
     appointmentTime,
   });
+
+  if (appointmentTime && new Date(appointmentTime) < new Date()) {
+    throw new BadRequestError('تاريخ/وقت الموعد لا يمكن أن يكون في الماضي');
+  }
 
   if (appointmentTime) {
     const targetDate = new Date(appointmentTime);
@@ -416,6 +424,9 @@ const updateBookingStatus = async ({ bookingId, status, appointmentTime, staffNo
   }
 
   if (appointmentTime) {
+    if (new Date(appointmentTime) < new Date()) {
+      throw new BadRequestError('تاريخ/وقت الموعد لا يمكن أن يكون في الماضي');
+    }
     booking.appointmentTime = appointmentTime;
   }
 

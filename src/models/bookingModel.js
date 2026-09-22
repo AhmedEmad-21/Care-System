@@ -25,6 +25,7 @@ const bookingSchema = new mongoose.Schema(
     bookingNumber: {
       type: Number,
       unique: true,
+      sparse: true,
       index: true,
     },
     patientId: {

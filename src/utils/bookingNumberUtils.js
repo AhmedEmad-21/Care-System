@@ -6,8 +6,8 @@ const mongoose = require('mongoose');
  */
 const getNextSharedBookingNumber = async () => {
   const [lastDoc, lastNurse] = await Promise.all([
-    mongoose.model('Booking').findOne({ bookingNumber: { $exists: true, $ne: null } }).sort({ bookingNumber: -1 }).select('bookingNumber').lean(),
-    mongoose.model('NursingBooking').findOne({ bookingNumber: { $exists: true, $ne: null } }).sort({ bookingNumber: -1 }).select('bookingNumber').lean(),
+    mongoose.model('Booking').findOne({ bookingNumber: { $type: 'number' } }).sort({ bookingNumber: -1 }).select('bookingNumber').lean(),
+    mongoose.model('NursingBooking').findOne({ bookingNumber: { $type: 'number' } }).sort({ bookingNumber: -1 }).select('bookingNumber').lean(),
   ]);
 
   const maxDoc = (lastDoc && typeof lastDoc.bookingNumber === 'number') ? lastDoc.bookingNumber : 999;

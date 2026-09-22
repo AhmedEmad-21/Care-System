@@ -32,6 +32,13 @@ const setBookingSchedule = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { appointmentTime, status } = req.body;
 
+  if (appointmentTime && new Date(appointmentTime) < new Date()) {
+    return res.status(400).json({
+      success: false,
+      message: "تاريخ/وقت الموعد لا يمكن أن يكون في الماضي"
+    });
+  }
+
   const updatedBooking = await scheduleBooking({
     userId: req.user.id || req.user._id,
     bookingId: id,
