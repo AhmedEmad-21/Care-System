@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const Doctor = require('../models/doctorModel');
 const Nurse = require('../models/nurseModel');
@@ -1031,6 +1032,544 @@ const listStaffAccounts = asyncHandler(async (req, res) => {
   });
 });
 
+// 15. استرجاع قائمة المرضى للوحة تحكم الـ Staff مع البحث والفلترة وترقيم الصفحات وإحصائيات الحجوزات
+const listPatients = asyncHandler(async (req, res) => {
+  const { page, limit, query, search, accountStatus, startDate, endDate, sortBy, order } = req.query;
+  const searchTerm = (query || search || '').trim();
+
+  const pageNumber = Math.max(1, parseInt(page, 10) || 1);
+  const pageSize = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
+  const skip = (pageNumber - 1) * pageSize;
+
+  let filter = { role: 'Patient' };
+
+  if (accountStatus) {
+    filter.accountStatus = accountStatus;
+  }
+
+  if (searchTerm) {
+    filter.$or = [
+      { name: { $regex: searchTerm, $options: 'i' } },
+      { email: { $regex: searchTerm, $options: 'i' } },
+      { phoneNumber: { $regex: searchTerm, $options: 'i' } },
+      { address: { $regex: searchTerm, $options: 'i' } },
+    ];
+  }
+
+  if (startDate || endDate) {
+    filter.createdAt = {};
+    if (startDate) {
+      filter.createdAt.$gte = new Date(startDate);
+    }
+    if (endDate) {
+      filter.createdAt.$lte = new Date(endDate);
+    }
+  }
+
+  const sortField = sortBy === 'name' ? 'name' : 'createdAt';
+  const sortDirection = order === 'asc' ? 1 : -1;
+
+  const [totalPatients, patients] = await Promise.all([
+    User.countDocuments(filter),
+    User.find(filter)
+      .select('-passwordHash -resetPasswordTokenHash')
+      .sort({ [sortField]: sortDirection })
+      .skip(skip)
+      .limit(pageSize)
+      .lean(),
+  ]);
+
+  const patientIds = patients.map((p) => p._id);
+
+  // حساب ملخص الحجوزات لكل مريض في الصفحة الحالية
+  let bookingStatsMap = {};
+  if (patientIds.length > 0) {
+    const [doctorStats, nursingStats] = await Promise.all([
+      Booking.aggregate([
+        { $match: { patientId: { $in: patientIds } } },
+        {
+          $group: {
+            _id: '$patientId',
+            totalDoctorBookings: { $sum: 1 },
+            completedDoctorBookings: {
+              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
+            },
+            totalDoctorSpent: {
+              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$totalCost', 0] },
+            },
+            lastDoctorBookingDate: { $max: '$createdAt' },
+          },
+        },
+      ]),
+      NursingBooking.aggregate([
+        { $match: { patientId: { $in: patientIds } } },
+        {
+          $group: {
+            _id: '$patientId',
+            totalNursingBookings: { $sum: 1 },
+            completedNursingBookings: {
+              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
+            },
+            totalNursingSpent: {
+              $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$totalCost', 0] },
+            },
+            lastNursingBookingDate: { $max: '$createdAt' },
+          },
+        },
+      ]),
+    ]);
+
+    patientIds.forEach((id) => {
+      bookingStatsMap[id.toString()] = {
+        totalBookings: 0,
+        completedBookings: 0,
+        totalSpent: 0,
+        lastBookingDate: null,
+      };
+    });
+
+    doctorStats.forEach((stat) => {
+      const key = stat._id.toString();
+      if (bookingStatsMap[key]) {
+        bookingStatsMap[key].totalBookings += stat.totalDoctorBookings || 0;
+        bookingStatsMap[key].completedBookings += stat.completedDoctorBookings || 0;
+        bookingStatsMap[key].totalSpent += stat.totalDoctorSpent || 0;
+        bookingStatsMap[key].lastBookingDate = stat.lastDoctorBookingDate;
+      }
+    });
+
+    nursingStats.forEach((stat) => {
+      const key = stat._id.toString();
+      if (bookingStatsMap[key]) {
+        bookingStatsMap[key].totalBookings += stat.totalNursingBookings || 0;
+        bookingStatsMap[key].completedBookings += stat.completedNursingBookings || 0;
+        bookingStatsMap[key].totalSpent += stat.totalNursingSpent || 0;
+        if (
+          !bookingStatsMap[key].lastBookingDate ||
+          new Date(stat.lastNursingBookingDate) > new Date(bookingStatsMap[key].lastBookingDate)
+        ) {
+          bookingStatsMap[key].lastBookingDate = stat.lastNursingBookingDate;
+        }
+      }
+    });
+  }
+
+  const enrichedPatients = patients.map((p) => {
+    const stats = bookingStatsMap[p._id.toString()] || {
+      totalBookings: 0,
+      completedBookings: 0,
+      totalSpent: 0,
+      lastBookingDate: null,
+    };
+    return {
+      ...p,
+      stats,
+    };
+  });
+
+  return res.json({
+    success: true,
+    count: enrichedPatients.length,
+    pagination: {
+      total: totalPatients,
+      page: pageNumber,
+      limit: pageSize,
+      totalPages: Math.ceil(totalPatients / pageSize) || 1,
+    },
+    data: enrichedPatients,
+  });
+});
+
+// 16. عرض تفاصيل مريض واحد بالكامل مع ملخص وإحصائيات وتاريخ كافة حجوزاته
+const getPatientDetailsAndSummary = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'معرف المريض غير صالح' });
+  }
+
+  const patient = await User.findOne({ _id: id, role: 'Patient' })
+    .select('-passwordHash -resetPasswordTokenHash')
+    .lean();
+
+  if (!patient) {
+    return res.status(404).json({ success: false, message: 'المريض غير موجود' });
+  }
+
+  const [doctorBookings, nursingBookings] = await Promise.all([
+    Booking.find({ patientId: id })
+      .populate('doctorId', 'name specialization phoneNumber profileImage')
+      .populate('nurseId', 'name phoneNumber profileImage')
+      .sort({ createdAt: -1 })
+      .lean(),
+    NursingBooking.find({ patientId: id })
+      .populate('nurseId', 'name phoneNumber profileImage')
+      .populate('serviceId', 'name basePrice description')
+      .sort({ createdAt: -1 })
+      .lean(),
+  ]);
+
+  const formattedDoctor = doctorBookings.map((b) => ({
+    _id: b._id,
+    bookingNumber: b.bookingNumber,
+    type: 'doctor',
+    provider: b.doctorId
+      ? {
+          _id: b.doctorId._id,
+          name: b.doctorId.name,
+          type: 'Doctor',
+          specialization: b.doctorId.specialization,
+          phoneNumber: b.doctorId.phoneNumber,
+          profileImage: b.doctorId.profileImage || null,
+        }
+      : b.nurseId
+        ? {
+            _id: b.nurseId._id,
+            name: b.nurseId.name,
+            type: 'Nurse',
+            specialization: 'تمريض عام',
+            phoneNumber: b.nurseId.phoneNumber,
+            profileImage: b.nurseId.profileImage || null,
+          }
+        : null,
+    serviceName: b.doctorId?.specialization || b.suggestedSpecialty || 'كشف طبي',
+    appointmentTime: b.appointmentTime,
+    requestLocation: b.requestLocation,
+    totalCost: b.totalCost || 0,
+    status: b.status,
+    isReviewed: Boolean(b.isReviewed),
+    staffNote: b.staffNote || '',
+    createdAt: b.createdAt,
+  }));
+
+  const formattedNursing = nursingBookings.map((b) => ({
+    _id: b._id,
+    bookingNumber: b.bookingNumber,
+    type: 'nursing',
+    provider: b.nurseId
+      ? {
+          _id: b.nurseId._id,
+          name: b.nurseId.name,
+          type: 'Nurse',
+          specialization: 'تمريض منزلي',
+          phoneNumber: b.nurseId.phoneNumber,
+          profileImage: b.nurseId.profileImage || null,
+        }
+      : null,
+    serviceName: b.serviceId?.name || 'خدمة تمريض',
+    appointmentTime: b.appointmentTime,
+    requestLocation: b.requestLocation,
+    totalCost: b.totalCost || (b.serviceId?.basePrice ? Number(b.serviceId.basePrice) : 0),
+    status: b.status,
+    isReviewed: Boolean(b.isReviewed),
+    staffNote: b.staffNote || '',
+    createdAt: b.createdAt,
+  }));
+
+  const allBookings = [...formattedDoctor, ...formattedNursing].sort(
+    (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+  );
+
+  const statusCounts = {
+    pending: 0,
+    confirmed: 0,
+    completed: 0,
+    cancelled: 0,
+    rejected: 0,
+  };
+
+  let totalSpent = 0;
+  allBookings.forEach((b) => {
+    if (statusCounts[b.status] !== undefined) {
+      statusCounts[b.status]++;
+    }
+    if (b.status === 'completed') {
+      totalSpent += b.totalCost || 0;
+    }
+  });
+
+  const stats = {
+    totalBookings: allBookings.length,
+    doctorBookingsCount: formattedDoctor.length,
+    nursingBookingsCount: formattedNursing.length,
+    byStatus: statusCounts,
+    totalSpent,
+    lastBookingDate: allBookings.length > 0 ? allBookings[0].createdAt : null,
+    firstBookingDate: allBookings.length > 0 ? allBookings[allBookings.length - 1].createdAt : null,
+  };
+
+  return res.json({
+    success: true,
+    data: {
+      patient,
+      stats,
+      bookings: allBookings,
+    },
+  });
+});
+
+// 17. تحليلات وإحصائيات شاملة للمرضى (النمو، المسجلين حديثاً، النشاط، والإنفاق)
+const getPatientsAnalytics = asyncHandler(async (req, res) => {
+  const now = new Date();
+
+  // بداية اليوم 00:00:00 بتوقيت السيرفر
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // بداية الأسبوع (آخر 7 أيام)
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  // بداية الشهر (آخر 30 يوماً)
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  // آخر 6 شهور للتريند الشهري
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+
+  // آخر 14 يوم للتريند اليومي
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+  const [
+    totalPatients,
+    activePatients,
+    suspendedPatients,
+    registeredToday,
+    registeredThisWeek,
+    registeredThisMonth,
+    recentPatients,
+    monthlyTrendAgg,
+    dailyTrendAgg,
+    doctorBookedPatientIds,
+    nursingBookedPatientIds,
+    completedDoctorSpendAgg,
+    completedNursingSpendAgg,
+    topDoctorBookers,
+    topNursingBookers,
+  ] = await Promise.all([
+    User.countDocuments({ role: 'Patient' }),
+    User.countDocuments({ role: 'Patient', accountStatus: 'active' }),
+    User.countDocuments({ role: 'Patient', accountStatus: 'suspended' }),
+    User.countDocuments({ role: 'Patient', createdAt: { $gte: startOfToday } }),
+    User.countDocuments({ role: 'Patient', createdAt: { $gte: sevenDaysAgo } }),
+    User.countDocuments({ role: 'Patient', createdAt: { $gte: thirtyDaysAgo } }),
+    User.find({ role: 'Patient' })
+      .select('_id name email phoneNumber address accountStatus profileImage createdAt')
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .lean(),
+    User.aggregate([
+      { $match: { role: 'Patient', createdAt: { $gte: sixMonthsAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    User.aggregate([
+      { $match: { role: 'Patient', createdAt: { $gte: fourteenDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
+    Booking.distinct('patientId'),
+    NursingBooking.distinct('patientId'),
+    Booking.aggregate([
+      { $match: { status: 'completed' } },
+      { $group: { _id: null, total: { $sum: '$totalCost' } } },
+    ]),
+    NursingBooking.aggregate([
+      { $match: { status: 'completed' } },
+      { $group: { _id: null, total: { $sum: '$totalCost' } } },
+    ]),
+    Booking.aggregate([
+      {
+        $group: {
+          _id: '$patientId',
+          bookingsCount: { $sum: 1 },
+          completedBookings: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
+          },
+          totalSpent: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$totalCost', 0] },
+          },
+        },
+      },
+      { $sort: { bookingsCount: -1 } },
+      { $limit: 10 },
+    ]),
+    NursingBooking.aggregate([
+      {
+        $group: {
+          _id: '$patientId',
+          bookingsCount: { $sum: 1 },
+          completedBookings: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
+          },
+          totalSpent: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$totalCost', 0] },
+          },
+        },
+      },
+      { $sort: { bookingsCount: -1 } },
+      { $limit: 10 },
+    ]),
+  ]);
+
+  // دمج معرفات المرضى الذين قاموا بالحجز لحساب نسبة التحويل
+  const allBookedPatientIdStrings = new Set([
+    ...doctorBookedPatientIds.filter(Boolean).map((id) => id.toString()),
+    ...nursingBookedPatientIds.filter(Boolean).map((id) => id.toString()),
+  ]);
+  const bookedPatients = allBookedPatientIdStrings.size;
+  const unbookedPatients = Math.max(0, totalPatients - bookedPatients);
+  const conversionRate = totalPatients > 0
+    ? Number(((bookedPatients / totalPatients) * 100).toFixed(1))
+    : 0;
+
+  // إجمالي الإنفاق ومتوسط إنفاق المريض
+  const totalDoctorSpend = completedDoctorSpendAgg[0]?.total || 0;
+  const totalNursingSpend = completedNursingSpendAgg[0]?.total || 0;
+  const totalPatientSpend = totalDoctorSpend + totalNursingSpend;
+  const averageSpendPerPatient = bookedPatients > 0
+    ? Math.round(totalPatientSpend / bookedPatients)
+    : 0;
+
+  // تجميع أعلى المرضى حجزاً من أطباء وتمريض
+  const topPatientsMap = {};
+  [...topDoctorBookers, ...topNursingBookers].forEach((item) => {
+    if (!item._id) return;
+    const key = item._id.toString();
+    if (!topPatientsMap[key]) {
+      topPatientsMap[key] = {
+        patientId: item._id,
+        bookingsCount: 0,
+        completedBookings: 0,
+        totalSpent: 0,
+      };
+    }
+    topPatientsMap[key].bookingsCount += item.bookingsCount || 0;
+    topPatientsMap[key].completedBookings += item.completedBookings || 0;
+    topPatientsMap[key].totalSpent += item.totalSpent || 0;
+  });
+
+  const sortedTopPatientKeys = Object.keys(topPatientsMap)
+    .sort((a, b) => topPatientsMap[b].bookingsCount - topPatientsMap[a].bookingsCount)
+    .slice(0, 5);
+
+  const topPatientUsers = sortedTopPatientKeys.length > 0
+    ? await User.find({ _id: { $in: sortedTopPatientKeys } })
+        .select('_id name phoneNumber email profileImage')
+        .lean()
+    : [];
+
+  const topPatients = sortedTopPatientKeys.map((key) => {
+    const user = topPatientUsers.find((u) => u._id.toString() === key);
+    return {
+      _id: key,
+      name: user ? user.name : 'مستخدم',
+      phoneNumber: user ? user.phoneNumber : '',
+      email: user ? user.email : '',
+      profileImage: user ? user.profileImage : null,
+      bookingsCount: topPatientsMap[key].bookingsCount,
+      completedBookings: topPatientsMap[key].completedBookings,
+      totalSpent: topPatientsMap[key].totalSpent,
+    };
+  });
+
+  return res.json({
+    success: true,
+    data: {
+      overview: {
+        totalPatients,
+        activePatients,
+        suspendedPatients,
+        bookedPatients,
+        unbookedPatients,
+        conversionRate,
+      },
+      growth: {
+        registeredToday,
+        registeredThisWeek,
+        registeredThisMonth,
+      },
+      financials: {
+        totalPatientSpend,
+        averageSpendPerPatient,
+      },
+      recentPatients,
+      trends: {
+        dailyLast14Days: dailyTrendAgg.map((item) => ({
+          date: item._id,
+          count: item.count,
+        })),
+        monthlyLast6Months: monthlyTrendAgg.map((item) => ({
+          month: item._id,
+          count: item.count,
+        })),
+      },
+      topPatients,
+    },
+  });
+});
+
+// 18. تفعيل أو تجميد حساب مريض (Active / Suspended)
+const togglePatientStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { accountStatus, reason } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ success: false, message: 'معرف المريض غير صالح' });
+  }
+
+  const patient = await User.findOne({ _id: id, role: 'Patient' });
+  if (!patient) {
+    return res.status(404).json({ success: false, message: 'المريض غير موجود' });
+  }
+
+  const previousStatus = patient.accountStatus || 'active';
+  const newStatus = accountStatus
+    ? accountStatus
+    : previousStatus === 'active'
+      ? 'suspended'
+      : 'active';
+
+  if (!['active', 'suspended'].includes(newStatus)) {
+    return res.status(400).json({
+      success: false,
+      message: 'حالة الحساب يجب أن تكون إما active أو suspended',
+    });
+  }
+
+  patient.accountStatus = newStatus;
+  await patient.save();
+
+  await logAuditEvent({
+    actorId: req.user.id || req.user._id,
+    actorRole: req.user.role,
+    action: `PATIENT_STATUS_${newStatus.toUpperCase()}`,
+    entityId: patient._id,
+    entityType: 'User',
+    before: { accountStatus: previousStatus },
+    after: { accountStatus: newStatus },
+    meta: { reason: reason || '', patientName: patient.name, patientPhone: patient.phoneNumber },
+  });
+
+  return res.json({
+    success: true,
+    message: `تم تغيير حالة حساب المريض بنجاح إلى ${newStatus === 'active' ? 'نشط (Active)' : 'موقوف (Suspended)'}`,
+    data: {
+      _id: patient._id,
+      name: patient.name,
+      phoneNumber: patient.phoneNumber,
+      accountStatus: patient.accountStatus,
+    },
+  });
+});
+
 module.exports = {
   listAllBookings, cancelBookingHandler, cancelBookingByNumberHandler,
   getCompletedBookingsForSettlement, settleBookings, getBookingDetails,
@@ -1039,5 +1578,6 @@ module.exports = {
   listNursingServices, createNursingService, updateNursingService,
   listAuditLogsHandler, createStaffOrAdmin,
   searchUsersForStaff, listDoctorsForStaff, listNursesForStaff,
-  listStaffAccounts
+  listStaffAccounts,
+  listPatients, getPatientDetailsAndSummary, getPatientsAnalytics, togglePatientStatus
 };

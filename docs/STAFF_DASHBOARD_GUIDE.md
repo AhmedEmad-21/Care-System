@@ -11,7 +11,7 @@
 1. [قواعد عامة والتوثيق (General Conventions)](#1-قواعد-عامة-والتوثيق-general-conventions)
 2. [إدارة ومتابعة الحجوزات (Bookings Management)](#2-إدارة-ومتابعة-الحجوزات-bookings-management)
 3. [التسويات المالية والحجوزات المكتملة (Settlements & Financials)](#3-التسويات-المالية-والحجوزات-المكتملة-settlements--financials)
-4. [إدارة مزودي الخدمة والمستخدمين (Providers & Users Management)](#4-إدارة-مزودي-الخدمة-والمستخدمين-providers--users-management)
+4. [إدارة مزودي الخدمة والمرضى والمستخدمين (Providers & Patients Management)](#4-إدارة-مزودي-الخدمة-والمستخدمين-providers--users-management) *(دليل مفصل: [`PATIENT_MANAGEMENT_FRONTEND_GUIDE.md`](./PATIENT_MANAGEMENT_FRONTEND_GUIDE.md))*
 5. [إدارة حسابات الإدارة والاستاف (Staff & Admin Accounts)](#5-إدارة-حسابات-الإدارة-والاستاف-staff--admin-accounts)
 6. [إدارة الخدمات التمريضية (Nursing Services)](#6-إدارة-الخدمات-التمريضية-nursing-services)
 7. [التحليلات وسجلات المراقبة (Analytics & Audit Logs)](#7-التحليلات-وسجلات-المراقبة-analytics--audit-logs)
@@ -313,6 +313,280 @@ Authorization: Bearer <accessToken>
       "profileImage": null
     }
   ]
+}
+```
+
+---
+
+### 4.0.1 عرض قائمة كافة المرضى والبحث والفلترة (Patients Directory)
+* **Method & Path:** `GET /api/staff/patients`
+* **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** يسترجع هذا المسار قائمة كاملة بالمرضى المسجلين على التطبيق مع دعم الترقيم والبحث الفوري والفلترة بالحالة ونطاق تاريخ التسجيل، ويحسب تلقائياً لكل مريض ملخصاً سريعاً لحجوزاته (إجمالي الحجوزات، المكتملة، وتاريخ آخر حجز).
+* **Query Params:**
+  * `page` *(optional)*: رقم الصفحة (الافتراضي: `1`).
+  * `limit` *(optional)*: عدد العناصر بالصفحة (الافتراضي: `20`، الحد الأقصى: `100`).
+  * `query` أو `search` *(optional)*: البحث بالاسم، البريد الإلكتروني، رقم الهاتف، أو العنوان.
+  * `accountStatus` *(optional)*: `active` | `suspended`.
+  * `startDate` *(optional)*: فلترة تاريخ التسجيل من (مثال: `2026-01-01`).
+  * `endDate` *(optional)*: فلترة تاريخ التسجيل إلى (مثال: `2026-12-31`).
+  * `sortBy` *(optional)*: حقل الترتيب (`createdAt` أو `name`، الافتراضي: `createdAt`).
+  * `order` *(optional)*: اتجاه الترتيب (`desc` أو `asc`، الافتراضي: `desc`).
+
+#### 📥 Request Example:
+```http
+GET /api/staff/patients?page=1&limit=10&accountStatus=active&search=أحمد HTTP/1.1
+Host: localhost:3000
+Authorization: Bearer <accessToken>
+```
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "count": 1,
+  "pagination": {
+    "total": 45,
+    "page": 1,
+    "limit": 10,
+    "totalPages": 5
+  },
+  "data": [
+    {
+      "_id": "64a1b2c3d4e5f6789012345a",
+      "name": "أحمد محمد محمود",
+      "email": "ahmed.patient@example.com",
+      "phoneNumber": "01012345678",
+      "address": "الفيوم - المسلة - شارع الحرية",
+      "profileImage": "https://res.cloudinary.com/care/image/upload/v1/patients/avatar1.jpg",
+      "accountStatus": "active",
+      "createdAt": "2026-08-15T12:30:00.000Z",
+      "stats": {
+        "totalBookings": 4,
+        "completedBookings": 3,
+        "totalSpent": 1250,
+        "lastBookingDate": "2026-09-20T14:00:00.000Z"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 4.0.2 عرض تفاصيل المريض وملخص وسجل كافة حجوزاته (Patient Details & Bookings Summary)
+* **Method & Path:** `GET /api/staff/patients/:id` (أو `GET /api/staff/patients/:id/summary`)
+* **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** يُستخدم هذا المسار عند فتح نافذة أو صفحة بروفايل المريض؛ حيث يعرض بيانات المريض الشخصية، إحصائيات دقيقة لكافة عملياته (أطباء وتمريض منزلي)، وقائمة الحجوزات كاملة مرتبة زمنياً من الأحدث للأقدم.
+
+#### 📥 Request Example:
+```http
+GET /api/staff/patients/64a1b2c3d4e5f6789012345a HTTP/1.1
+Host: localhost:3000
+Authorization: Bearer <accessToken>
+```
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "patient": {
+      "_id": "64a1b2c3d4e5f6789012345a",
+      "name": "أحمد محمد محمود",
+      "email": "ahmed.patient@example.com",
+      "phoneNumber": "01012345678",
+      "address": "الفيوم - المسلة - شارع الحرية",
+      "location": {
+        "type": "Point",
+        "coordinates": [30.8428, 29.3084]
+      },
+      "profileImage": "https://res.cloudinary.com/care/image/upload/v1/patients/avatar1.jpg",
+      "accountStatus": "active",
+      "createdAt": "2026-08-15T12:30:00.000Z"
+    },
+    "stats": {
+      "totalBookings": 4,
+      "doctorBookingsCount": 2,
+      "nursingBookingsCount": 2,
+      "byStatus": {
+        "pending": 0,
+        "confirmed": 1,
+        "completed": 2,
+        "cancelled": 1,
+        "rejected": 0
+      },
+      "totalSpent": 1250,
+      "lastBookingDate": "2026-09-20T14:00:00.000Z",
+      "firstBookingDate": "2026-08-20T10:00:00.000Z"
+    },
+    "bookings": [
+      {
+        "_id": "64b1c2d3e4f5a67890123411",
+        "bookingNumber": 1042,
+        "type": "doctor",
+        "provider": {
+          "_id": "64a7b2c1f1a2b3c4d5e6f7a1",
+          "name": "د. حازم القاضي",
+          "type": "Doctor",
+          "specialization": "باطنة وجهاز هضمي",
+          "phoneNumber": "01099887766",
+          "profileImage": null
+        },
+        "serviceName": "باطنة وجهاز هضمي",
+        "appointmentTime": "2026-09-25T11:00:00.000Z",
+        "requestLocation": {
+          "type": "Point",
+          "coordinates": [30.8428, 29.3084]
+        },
+        "totalCost": 350,
+        "status": "confirmed",
+        "isReviewed": false,
+        "staffNote": "تم الاتصال بالمريض وتأكيد الموعد",
+        "createdAt": "2026-09-20T14:00:00.000Z"
+      },
+      {
+        "_id": "64b1c2d3e4f5a67890123412",
+        "bookingNumber": 1025,
+        "type": "nursing",
+        "provider": {
+          "_id": "64a7b2c1f1a2b3c4d5e6f7a9",
+          "name": "م. كريم سعيد",
+          "type": "Nurse",
+          "specialization": "تمريض منزلي",
+          "phoneNumber": "01198765432",
+          "profileImage": null
+        },
+        "serviceName": "تركيب كانيولا ومحاليل وريدية",
+        "appointmentTime": "2026-09-02T16:00:00.000Z",
+        "requestLocation": {
+          "type": "Point",
+          "coordinates": [30.8428, 29.3084]
+        },
+        "totalCost": 400,
+        "status": "completed",
+        "isReviewed": true,
+        "staffNote": "",
+        "createdAt": "2026-09-02T12:00:00.000Z"
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 4.0.3 تحليلات وإحصائيات شاملة للمرضى والنمو (Patients Analytics & Insights)
+* **Method & Path:** `GET /api/staff/patients/analytics`
+* **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** يقدم هذا المسار لوحة تحليلات متكاملة عن مجتمع المرضى بالمنصة، بما في ذلك: إجمالي الأعداد، المسجلين الجدد (اليوم، هذا الأسبوع، هذا الشهر)، نسب التحويل من تسجيل إلى حجز فعلي، إجمالي إنفاق المرضى ومتوسط الإنفاق، منحنى النمو الزمني (يومي وشهري)، وقائمة بأعلى المرضى طلباً للحجوزات.
+
+#### 📥 Request Example:
+```http
+GET /api/staff/patients/analytics HTTP/1.1
+Host: localhost:3000
+Authorization: Bearer <accessToken>
+```
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "overview": {
+      "totalPatients": 350,
+      "activePatients": 342,
+      "suspendedPatients": 8,
+      "bookedPatients": 245,
+      "unbookedPatients": 105,
+      "conversionRate": 70.0
+    },
+    "growth": {
+      "registeredToday": 6,
+      "registeredThisWeek": 28,
+      "registeredThisMonth": 94
+    },
+    "financials": {
+      "totalPatientSpend": 185400,
+      "averageSpendPerPatient": 757
+    },
+    "recentPatients": [
+      {
+        "_id": "64a1b2c3d4e5f67890123499",
+        "name": "يوسف خالد رضوان",
+        "email": "youssef.k@example.com",
+        "phoneNumber": "01099881122",
+        "address": "الفيوم - دمو",
+        "accountStatus": "active",
+        "profileImage": null,
+        "createdAt": "2026-09-23T06:15:00.000Z"
+      }
+    ],
+    "trends": {
+      "dailyLast14Days": [
+        { "date": "2026-09-10", "count": 4 },
+        { "date": "2026-09-11", "count": 5 },
+        { "date": "2026-09-12", "count": 3 },
+        { "date": "2026-09-23", "count": 6 }
+      ],
+      "monthlyLast6Months": [
+        { "month": "2026-04", "count": 35 },
+        { "month": "2026-05", "count": 48 },
+        { "month": "2026-06", "count": 62 },
+        { "month": "2026-07", "count": 78 },
+        { "month": "2026-08", "count": 85 },
+        { "month": "2026-09", "count": 94 }
+      ]
+    },
+    "topPatients": [
+      {
+        "_id": "64a1b2c3d4e5f6789012345a",
+        "name": "أحمد محمد محمود",
+        "phoneNumber": "01012345678",
+        "email": "ahmed.patient@example.com",
+        "profileImage": null,
+        "bookingsCount": 12,
+        "completedBookings": 11,
+        "totalSpent": 4800
+      }
+    ]
+  }
+}
+```
+
+---
+
+### 4.0.4 تفعيل أو تجميد حساب مريض (Toggle Patient Account Status)
+* **Method & Path:** `PATCH /api/staff/patients/:id/status`
+* **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** يتيح للاستاف تجميد حساب مريض (في حال إساءة الاستخدام أو تكرار الإلغاءات الوهمية) أو إعادة تفعيله، مع تسجيل الحدث بالكامل في الـ `AuditLog`.
+* **Request Body:**
+  * `accountStatus` *(optional)*: `active` | `suspended` (في حال تركه فارغاً سيتم عكس الحالة الحالية تلقائياً Toggle).
+  * `reason` *(optional)*: سبب الإيقاف أو التفعيل للتوثيق الإداري.
+
+#### 📥 Request Example:
+```http
+PATCH /api/staff/patients/64a1b2c3d4e5f6789012345a/status HTTP/1.1
+Host: localhost:3000
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{
+  "accountStatus": "suspended",
+  "reason": "تكرار طلب كشوفات وهمية وعدم التواجد بالعنوان"
+}
+```
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "message": "تم تغيير حالة حساب المريض بنجاح إلى موقوف (Suspended)",
+  "data": {
+    "_id": "64a1b2c3d4e5f6789012345a",
+    "name": "أحمد محمد محمود",
+    "phoneNumber": "01012345678",
+    "accountStatus": "suspended"
+  }
 }
 ```
 

@@ -40,6 +40,13 @@ router.get('/providers/:id/financial-summary', authMW, checkRoleMW('STAFF', 'ADM
 
 router.get('/users/search', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.searchUsersForStaff);
 
+// مسارات إدارة وتحليلات وسجل حجوزات المرضى
+router.get('/patients/analytics', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getPatientsAnalytics);
+router.get('/patients', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.listPatients);
+router.get('/patients/:id/summary', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getPatientDetailsAndSummary);
+router.get('/patients/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getPatientDetailsAndSummary);
+router.patch('/patients/:id/status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.togglePatientStatus);
+
 router.get('/providers/availability', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.providerAvailability);
 router.get('/doctors/status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.doctorsStatus);
 router.get('/nurses/status', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.nursesStatus);
