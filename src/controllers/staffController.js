@@ -1094,6 +1094,9 @@ const listPatients = asyncHandler(async (req, res) => {
             completedDoctorBookings: {
               $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
             },
+            cancelledDoctorBookings: {
+              $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] },
+            },
             totalDoctorSpent: {
               $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$totalCost', 0] },
             },
@@ -1110,6 +1113,9 @@ const listPatients = asyncHandler(async (req, res) => {
             completedNursingBookings: {
               $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
             },
+            cancelledNursingBookings: {
+              $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] },
+            },
             totalNursingSpent: {
               $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$totalCost', 0] },
             },
@@ -1123,6 +1129,7 @@ const listPatients = asyncHandler(async (req, res) => {
       bookingStatsMap[id.toString()] = {
         totalBookings: 0,
         completedBookings: 0,
+        cancelledBookings: 0,
         totalSpent: 0,
         lastBookingDate: null,
       };
@@ -1133,6 +1140,7 @@ const listPatients = asyncHandler(async (req, res) => {
       if (bookingStatsMap[key]) {
         bookingStatsMap[key].totalBookings += stat.totalDoctorBookings || 0;
         bookingStatsMap[key].completedBookings += stat.completedDoctorBookings || 0;
+        bookingStatsMap[key].cancelledBookings += stat.cancelledDoctorBookings || 0;
         bookingStatsMap[key].totalSpent += stat.totalDoctorSpent || 0;
         bookingStatsMap[key].lastBookingDate = stat.lastDoctorBookingDate;
       }
@@ -1143,6 +1151,7 @@ const listPatients = asyncHandler(async (req, res) => {
       if (bookingStatsMap[key]) {
         bookingStatsMap[key].totalBookings += stat.totalNursingBookings || 0;
         bookingStatsMap[key].completedBookings += stat.completedNursingBookings || 0;
+        bookingStatsMap[key].cancelledBookings += stat.cancelledNursingBookings || 0;
         bookingStatsMap[key].totalSpent += stat.totalNursingSpent || 0;
         if (
           !bookingStatsMap[key].lastBookingDate ||
@@ -1158,6 +1167,7 @@ const listPatients = asyncHandler(async (req, res) => {
     const stats = bookingStatsMap[p._id.toString()] || {
       totalBookings: 0,
       completedBookings: 0,
+      cancelledBookings: 0,
       totalSpent: 0,
       lastBookingDate: null,
     };
@@ -1343,6 +1353,8 @@ const getPatientsAnalytics = asyncHandler(async (req, res) => {
     completedNursingSpendAgg,
     topDoctorBookers,
     topNursingBookers,
+    cancelledDoctorBookers,
+    cancelledNursingBookers,
   ] = await Promise.all([
     User.countDocuments({ role: 'Patient' }),
     User.countDocuments({ role: 'Patient', accountStatus: 'active' }),
@@ -1417,6 +1429,30 @@ const getPatientsAnalytics = asyncHandler(async (req, res) => {
       { $sort: { bookingsCount: -1 } },
       { $limit: 10 },
     ]),
+    Booking.aggregate([
+      { $match: { status: 'cancelled' } },
+      {
+        $group: {
+          _id: '$patientId',
+          cancelledCount: { $sum: 1 },
+          lastCancelledAt: { $max: '$updatedAt' },
+        },
+      },
+      { $sort: { cancelledCount: -1 } },
+      { $limit: 15 },
+    ]),
+    NursingBooking.aggregate([
+      { $match: { status: 'cancelled' } },
+      {
+        $group: {
+          _id: '$patientId',
+          cancelledCount: { $sum: 1 },
+          lastCancelledAt: { $max: '$updatedAt' },
+        },
+      },
+      { $sort: { cancelledCount: -1 } },
+      { $limit: 15 },
+    ]),
   ]);
 
   // دمج معرفات المرضى الذين قاموا بالحجز لحساب نسبة التحويل
@@ -1480,6 +1516,75 @@ const getPatientsAnalytics = asyncHandler(async (req, res) => {
     };
   });
 
+  // تجميع أعلى المرضى إلغاءً للحجوزات من أطباء وتمريض
+  const topCancelledMap = {};
+  [...cancelledDoctorBookers, ...cancelledNursingBookers].forEach((item) => {
+    if (!item._id) return;
+    const key = item._id.toString();
+    if (!topCancelledMap[key]) {
+      topCancelledMap[key] = {
+        patientId: item._id,
+        cancelledCount: 0,
+        doctorCancelledCount: 0,
+        nursingCancelledCount: 0,
+        lastCancelledAt: null,
+      };
+    }
+    topCancelledMap[key].cancelledCount += item.cancelledCount || 0;
+    if (item.lastCancelledAt) {
+      if (
+        !topCancelledMap[key].lastCancelledAt ||
+        new Date(item.lastCancelledAt) > new Date(topCancelledMap[key].lastCancelledAt)
+      ) {
+        topCancelledMap[key].lastCancelledAt = item.lastCancelledAt;
+      }
+    }
+  });
+
+  cancelledDoctorBookers.forEach((item) => {
+    if (!item._id) return;
+    const key = item._id.toString();
+    if (topCancelledMap[key]) {
+      topCancelledMap[key].doctorCancelledCount += item.cancelledCount || 0;
+    }
+  });
+
+  cancelledNursingBookers.forEach((item) => {
+    if (!item._id) return;
+    const key = item._id.toString();
+    if (topCancelledMap[key]) {
+      topCancelledMap[key].nursingCancelledCount += item.cancelledCount || 0;
+    }
+  });
+
+  const sortedCancelledKeys = Object.keys(topCancelledMap)
+    .sort((a, b) => topCancelledMap[b].cancelledCount - topCancelledMap[a].cancelledCount)
+    .slice(0, 10);
+
+  const topCancelledUsers = sortedCancelledKeys.length > 0
+    ? await User.find({ _id: { $in: sortedCancelledKeys } })
+        .select('_id name phoneNumber email accountStatus profileImage createdAt address')
+        .lean()
+    : [];
+
+  const topCancelledPatients = sortedCancelledKeys.map((key) => {
+    const user = topCancelledUsers.find((u) => u._id.toString() === key);
+    return {
+      _id: key,
+      name: user ? user.name : 'مستخدم',
+      phoneNumber: user ? user.phoneNumber : '',
+      email: user ? user.email : '',
+      address: user ? user.address : '',
+      accountStatus: user ? (user.accountStatus || 'active') : 'active',
+      profileImage: user ? user.profileImage : null,
+      createdAt: user ? user.createdAt : null,
+      cancelledCount: topCancelledMap[key].cancelledCount,
+      doctorCancelledCount: topCancelledMap[key].doctorCancelledCount,
+      nursingCancelledCount: topCancelledMap[key].nursingCancelledCount,
+      lastCancelledAt: topCancelledMap[key].lastCancelledAt,
+    };
+  });
+
   return res.json({
     success: true,
     data: {
@@ -1512,6 +1617,7 @@ const getPatientsAnalytics = asyncHandler(async (req, res) => {
         })),
       },
       topPatients,
+      topCancelledPatients,
     },
   });
 });
@@ -1570,6 +1676,212 @@ const togglePatientStatus = asyncHandler(async (req, res) => {
   });
 });
 
+// 19. عرض قائمة المرضى الأكثر إلغاءً للحجوزات لمراقبتهم وتجميد حساباتهم عند اللزوم
+const getMostCancelledPatients = asyncHandler(async (req, res) => {
+  const { limit, minCancellations, accountStatus, search, query } = req.query;
+  const maxLimit = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
+  const minCancel = Math.max(1, parseInt(minCancellations, 10) || 1);
+  const searchTerm = (search || query || '').trim();
+
+  // 1. تجميع الحجوزات الملغاة من الأطباء والتمريض
+  const [cancelledDoctors, cancelledNursing] = await Promise.all([
+    Booking.aggregate([
+      { $match: { status: 'cancelled' } },
+      {
+        $group: {
+          _id: '$patientId',
+          cancelledCount: { $sum: 1 },
+          lastCancelledAt: { $max: '$updatedAt' },
+        },
+      },
+      { $sort: { cancelledCount: -1 } },
+      { $limit: 200 },
+    ]),
+    NursingBooking.aggregate([
+      { $match: { status: 'cancelled' } },
+      {
+        $group: {
+          _id: '$patientId',
+          cancelledCount: { $sum: 1 },
+          lastCancelledAt: { $max: '$updatedAt' },
+        },
+      },
+      { $sort: { cancelledCount: -1 } },
+      { $limit: 200 },
+    ]),
+  ]);
+
+  const cancelledMap = {};
+  [...cancelledDoctors, ...cancelledNursing].forEach((item) => {
+    if (!item._id) return;
+    const key = item._id.toString();
+    if (!cancelledMap[key]) {
+      cancelledMap[key] = {
+        cancelledCount: 0,
+        doctorCancelledCount: 0,
+        nursingCancelledCount: 0,
+        lastCancelledAt: null,
+      };
+    }
+    cancelledMap[key].cancelledCount += item.cancelledCount || 0;
+    if (item.lastCancelledAt) {
+      if (
+        !cancelledMap[key].lastCancelledAt ||
+        new Date(item.lastCancelledAt) > new Date(cancelledMap[key].lastCancelledAt)
+      ) {
+        cancelledMap[key].lastCancelledAt = item.lastCancelledAt;
+      }
+    }
+  });
+
+  cancelledDoctors.forEach((item) => {
+    if (!item._id) return;
+    const key = item._id.toString();
+    if (cancelledMap[key]) {
+      cancelledMap[key].doctorCancelledCount += item.cancelledCount || 0;
+    }
+  });
+
+  cancelledNursing.forEach((item) => {
+    if (!item._id) return;
+    const key = item._id.toString();
+    if (cancelledMap[key]) {
+      cancelledMap[key].nursingCancelledCount += item.cancelledCount || 0;
+    }
+  });
+
+  // تصفية المعرفات حسب الحد الأدنى للإلغاءات
+  const eligiblePatientIds = Object.keys(cancelledMap)
+    .filter((key) => cancelledMap[key].cancelledCount >= minCancel);
+
+  if (eligiblePatientIds.length === 0) {
+    return res.json({
+      success: true,
+      count: 0,
+      data: [],
+    });
+  }
+
+  // بناء استعلام المستخدمين
+  let userQuery = {
+    _id: { $in: eligiblePatientIds },
+    role: 'Patient',
+  };
+
+  if (accountStatus && ['active', 'suspended'].includes(accountStatus)) {
+    userQuery.accountStatus = accountStatus;
+  }
+
+  if (searchTerm) {
+    userQuery.$or = [
+      { name: { $regex: searchTerm, $options: 'i' } },
+      { phoneNumber: { $regex: searchTerm, $options: 'i' } },
+      { email: { $regex: searchTerm, $options: 'i' } },
+    ];
+  }
+
+  const users = await User.find(userQuery)
+    .select('_id name phoneNumber email address accountStatus profileImage createdAt')
+    .lean();
+
+  const userIds = users.map((u) => u._id);
+
+  if (userIds.length === 0) {
+    return res.json({
+      success: true,
+      count: 0,
+      data: [],
+    });
+  }
+
+  // جلب إجمالي الحجوزات والمكتملة لهؤلاء المرضى لحساب معدل الإلغاء بدقة
+  const [docTotalAgg, nurseTotalAgg] = await Promise.all([
+    Booking.aggregate([
+      { $match: { patientId: { $in: userIds } } },
+      {
+        $group: {
+          _id: '$patientId',
+          total: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        },
+      },
+    ]),
+    NursingBooking.aggregate([
+      { $match: { patientId: { $in: userIds } } },
+      {
+        $group: {
+          _id: '$patientId',
+          total: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+        },
+      },
+    ]),
+  ]);
+
+  const bookingTotalsMap = {};
+  userIds.forEach((id) => {
+    bookingTotalsMap[id.toString()] = { total: 0, completed: 0 };
+  });
+  docTotalAgg.forEach((d) => {
+    const key = d._id.toString();
+    if (bookingTotalsMap[key]) {
+      bookingTotalsMap[key].total += d.total || 0;
+      bookingTotalsMap[key].completed += d.completed || 0;
+    }
+  });
+  nurseTotalAgg.forEach((n) => {
+    const key = n._id.toString();
+    if (bookingTotalsMap[key]) {
+      bookingTotalsMap[key].total += n.total || 0;
+      bookingTotalsMap[key].completed += n.completed || 0;
+    }
+  });
+
+  const enriched = users.map((user) => {
+    const key = user._id.toString();
+    const cancelInfo = cancelledMap[key] || {
+      cancelledCount: 0,
+      doctorCancelledCount: 0,
+      nursingCancelledCount: 0,
+      lastCancelledAt: null,
+    };
+    const totals = bookingTotalsMap[key] || { total: 0, completed: 0 };
+    const cancellationRate = totals.total > 0
+      ? Number(((cancelInfo.cancelledCount / totals.total) * 100).toFixed(1))
+      : 0;
+
+    return {
+      _id: user._id,
+      name: user.name,
+      phoneNumber: user.phoneNumber,
+      email: user.email,
+      address: user.address,
+      accountStatus: user.accountStatus || 'active',
+      profileImage: user.profileImage || null,
+      createdAt: user.createdAt,
+      stats: {
+        cancelledBookings: cancelInfo.cancelledCount,
+        doctorCancelledBookings: cancelInfo.doctorCancelledCount,
+        nursingCancelledBookings: cancelInfo.nursingCancelledCount,
+        totalBookings: totals.total,
+        completedBookings: totals.completed,
+        cancellationRate,
+        lastCancelledAt: cancelInfo.lastCancelledAt,
+      },
+    };
+  });
+
+  enriched.sort((a, b) => b.stats.cancelledBookings - a.stats.cancelledBookings);
+
+  const finalData = enriched.slice(0, maxLimit);
+
+  return res.json({
+    success: true,
+    count: finalData.length,
+    data: finalData,
+  });
+});
+
 module.exports = {
   listAllBookings, cancelBookingHandler, cancelBookingByNumberHandler,
   getCompletedBookingsForSettlement, settleBookings, getBookingDetails,
@@ -1579,5 +1891,6 @@ module.exports = {
   listAuditLogsHandler, createStaffOrAdmin,
   searchUsersForStaff, listDoctorsForStaff, listNursesForStaff,
   listStaffAccounts,
-  listPatients, getPatientDetailsAndSummary, getPatientsAnalytics, togglePatientStatus
+  listPatients, getPatientDetailsAndSummary, getPatientsAnalytics, togglePatientStatus,
+  getMostCancelledPatients
 };

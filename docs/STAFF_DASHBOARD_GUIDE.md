@@ -363,6 +363,7 @@ Authorization: Bearer <accessToken>
       "stats": {
         "totalBookings": 4,
         "completedBookings": 3,
+        "cancelledBookings": 1,
         "totalSpent": 1250,
         "lastBookingDate": "2026-09-20T14:00:00.000Z"
       }
@@ -548,6 +549,22 @@ Authorization: Bearer <accessToken>
         "completedBookings": 11,
         "totalSpent": 4800
       }
+    ],
+    "topCancelledPatients": [
+      {
+        "_id": "64a1b2c3d4e5f67890123477",
+        "name": "محمود إبراهيم",
+        "phoneNumber": "01022334455",
+        "email": "mahmoud@example.com",
+        "address": "الفيوم - إطسا",
+        "accountStatus": "active",
+        "profileImage": null,
+        "createdAt": "2026-07-10T11:00:00.000Z",
+        "cancelledCount": 6,
+        "doctorCancelledCount": 4,
+        "nursingCancelledCount": 2,
+        "lastCancelledAt": "2026-09-24T18:30:00.000Z"
+      }
     ]
   }
 }
@@ -555,10 +572,51 @@ Authorization: Bearer <accessToken>
 
 ---
 
-### 4.0.4 تفعيل أو تجميد حساب مريض (Toggle Patient Account Status)
+### 4.0.4 عرض قائمة المرضى الأكثر إلغاءً للحجوزات (Most Cancelled Patients)
+* **Method & Path:** `GET /api/staff/patients/most-cancelled`
+* **Auth:** Required (`Staff` or `Admin`)
+* **الوصف:** يتيح للمشرفين استعراض المستخدمين الأكثر إلغاءً للحجوزات (أطباء وتمريض) مع نسبة الإلغاء وحالة الحساب الحالية لسرعة اتخاذ إجراء التجميد.
+* **Query Params:**
+  * `limit` *(optional)*: الحد الأقصى للنتائج (افتراضي: `20`، أقصى حد: `100`).
+  * `minCancellations` *(optional)*: الحد الأدنى لعدد مرات الإلغاء (افتراضي: `1`).
+  * `accountStatus` *(optional)*: `all` | `active` | `suspended` (لتصفية الحسابات النشطة فقط التي تحتاج تدخلاً).
+  * `search` *(optional)*: بحث بالاسم أو الهاتف أو البريد.
+
+#### 📤 Response Example (200 OK):
+```json
+{
+  "success": true,
+  "count": 1,
+  "data": [
+    {
+      "_id": "64a1b2c3d4e5f67890123477",
+      "name": "محمود إبراهيم",
+      "phoneNumber": "01022334455",
+      "email": "mahmoud@example.com",
+      "address": "الفيوم - إطسا",
+      "accountStatus": "active",
+      "profileImage": null,
+      "createdAt": "2026-07-10T11:00:00.000Z",
+      "stats": {
+        "cancelledBookings": 6,
+        "doctorCancelledBookings": 4,
+        "nursingCancelledBookings": 2,
+        "totalBookings": 8,
+        "completedBookings": 2,
+        "cancellationRate": 75.0,
+        "lastCancelledAt": "2026-09-24T18:30:00.000Z"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 4.0.5 تفعيل أو تجميد حساب مريض (Toggle Patient Account Status)
 * **Method & Path:** `PATCH /api/staff/patients/:id/status`
 * **Auth:** Required (`Staff` or `Admin`)
-* **الوصف:** يتيح للاستاف تجميد حساب مريض (في حال إساءة الاستخدام أو تكرار الإلغاءات الوهمية) أو إعادة تفعيله، مع تسجيل الحدث بالكامل في الـ `AuditLog`.
+* **الوصف:** يتيح للاستاف تجميد حساب مريض (في حال إساءة الاستخدام أو تكرار الإلغاءات الوهمية) أو إعادة تفعيله، مع تسجيل الحدث بالكامل في الـ `AuditLog`. عند التجميد (`suspended`) يُمنع المريض من تسجيل الدخول ومن إنشاء حجوزات جديدة.
 * **Request Body:**
   * `accountStatus` *(optional)*: `active` | `suspended` (في حال تركه فارغاً سيتم عكس الحالة الحالية تلقائياً Toggle).
   * `reason` *(optional)*: سبب الإيقاف أو التفعيل للتوثيق الإداري.

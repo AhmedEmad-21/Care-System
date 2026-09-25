@@ -4,7 +4,7 @@ const NursingBooking = require('../models/nursingBookingModel');
 const Doctor = require('../models/doctorModel');
 const Nurse = require('../models/nurseModel');
 const User = require('../models/userModel');
-const { BadRequestError, NotFoundError } = require('../errors/appErrors');
+const { BadRequestError, NotFoundError, ForbiddenError } = require('../errors/appErrors');
 const { BOOKING_STATUSES } = require('../config/constants');
 const { logAuditEvent } = require('./auditLogService');
 const { normalizeGeoPoint } = require('../utils/geoPoint');
@@ -61,6 +61,14 @@ const assertNoSameDayBooking = async ({ patientId, appointmentTime }) => {
   }
 };
 
+const assertPatientActive = async (patientId) => {
+  if (!patientId) return;
+  const patient = await User.findById(patientId).select('accountStatus').lean();
+  if (patient && patient.accountStatus === 'suspended') {
+    throw new ForbiddenError('حسابك موقوف حالياً من قبل الإدارة، ولا يمكنك إجراء أي حجوزات جديدة. يرجى التواصل مع الدعم الفني.');
+  }
+};
+
 const resolveBookingPrice = async ({ doctorDoc, doctorId, nurseId, bookingType = 'regular' }) => {
   if (doctorDoc || doctorId) {
     const doctor = doctorDoc || await Doctor.findById(doctorId).lean();
@@ -100,6 +108,8 @@ const createDoctorBooking = async ({
   if (!doctorId && !nurseId) {
     throw new BadRequestError('doctorId or nurseId is required');
   }
+
+  await assertPatientActive(patientId);
 
   let resolvedDoctor = null;
   let resolvedDoctorId = doctorId || null;
@@ -229,6 +239,8 @@ const createDoctorBooking = async ({
 };
 
 const createNursingBooking = async ({ patientId, nurseId, serviceId, requestLocation, appointmentTime }) => {
+  await assertPatientActive(patientId);
+
   const nurse = await Nurse.findById(nurseId).lean();
   if (!nurse) throw new NotFoundError('Nurse not found');
 

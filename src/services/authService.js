@@ -7,6 +7,7 @@ const {
   ConflictError,
   NotFoundError,
   UnauthorizedError,
+  ForbiddenError,
   ServiceUnavailableError,
   TooManyRequestsError,
 } = require('../errors/appErrors');
@@ -399,6 +400,9 @@ module.exports = {
     const user = await User.findOne(query);
     if (!user || !(await user.comparePassword(password))) {
       throw new UnauthorizedError('بيانات الدخول غير صحيحة');
+    }
+    if (user.accountStatus === 'suspended') {
+      throw new ForbiddenError('تم تجميد هذا الحساب من قبل الإدارة. يرجى التواصل مع الدعم الفني.');
     }
     const tokens = await generateTokens(user);
     return {

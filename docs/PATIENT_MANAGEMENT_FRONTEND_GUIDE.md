@@ -14,11 +14,13 @@
    - [2.1 عرض قائمة المرضى مع البحث والفلترة والترقيم](#21-عرض-قائمة-المرضى-get-apistaffpatients)
    - [2.2 عرض تفاصيل المريض وملخص وسجل حجوزاته](#22-عرض-تفاصيل-المريض-get-apistaffpatientsid)
    - [2.3 تحليلات وإحصائيات المرضى والنمو](#23-تحليلات-وإحصائيات-المرضى-get-apistaffpatientsanalytics)
-   - [2.4 تفعيل أو إيقاف حساب المريض](#24-تفعيل-أو-إيقاف-حساب-المريض-patch-apistaffpatientsidstatus)
+   - [2.4 عرض حسابات المرضى الأكثر إلغاءً للحجوزات](#24-عرض-حسابات-المرضى-الأكثر-إلغاءً-للحجوزات-get-apistaffpatientsmost-cancelled)
+   - [2.5 تفعيل أو تجميد وإيقاف حساب المريض](#25-تفعيل-أو-تجميد-وإيقاف-حساب-المريض-patch-apistaffpatientsidstatus)
 3. [المطلوب تنفيذه في واجهات الفرونت إند (UI/UX Blueprint)](#3-المطلوب-تنفيذه-في-واجهات-الفرونت-إند-uiux-blueprint)
    - [الشاشة الأولى: صفحة قائمة المرضى (`/dashboard/patients`)](#الشاشة-الأولى-صفحة-قائمة-المرضى-dashboardpatients)
    - [المكون الثاني: دروار تفاصيل المريض وحجوزاته (`Patient Summary Drawer`)](#المكون-الثاني-دروار-تفاصيل-المريض-وحجوزاته-patient-summary-drawer)
    - [الشاشة الثالثة: صفحة تحليلات ونمو المرضى (`/dashboard/patients/analytics`)](#الشاشة-الثالثة-صفحة-تحليلات-ونمو-المرضى-dashboardpatientsanalytics)
+   - [الشاشة الرابعة: مراقبة الحسابات الأكثر إلغاءً وتجميدها (`/dashboard/patients/cancellations`)](#الشاشة-الرابعة-مراقبة-الحسابات-الأكثر-إلغاءً-وتجميدها-dashboardpatientscancellations)
 4. [نماذج TypeScript Interfaces الجاهزة](#4-نماذج-typescript-interfaces-الجاهزة)
 5. [أكواد استدعاء الـ API (API Client Functions)](#5-أكواد-استدعاء-الـ-api-api-client-functions)
 
@@ -30,11 +32,12 @@
 
 | الطريقة (Method) | المسار (Endpoint) | الوصف | المعلمات الرئيسية (Key Params) |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/api/staff/patients` | استرجاع قائمة المرضى مع ترقيم الصفحات والبحث والفلترة وملخص حجوزات كل مريض | `page`, `limit`, `search`, `accountStatus`, `startDate`, `endDate`, `sortBy`, `order` |
+| `GET` | `/api/staff/patients` | استرجاع قائمة المرضى مع ترقيم الصفحات والبحث والفلترة وملخص حجوزات كل مريض (بما فيها عدد الإلغاءات) | `page`, `limit`, `search`, `accountStatus`, `startDate`, `endDate`, `sortBy`, `order` |
 | `GET` | `/api/staff/patients/:id` | جلب الملف الشخصي الكامل للمريض + إحصائيات حجوزاته + سجل كافة حجوزاته أطباء وتمريض | `:id` (Mongo ObjectId للمريض) |
 | `GET` | `/api/staff/patients/:id/summary` | مسار بديل متطابق مع السابق لسهولة التكامل | `:id` |
-| `GET` | `/api/staff/patients/analytics` | إحصائيات شاملة: إجمالي المرضى، المسجلين اليوم/الأسبوع/الشهر، معدل التحويل، أعلى المرضى حجزاً، ومنحنى النمو | لا يتطلب معلمات |
-| `PATCH` | `/api/staff/patients/:id/status` | تجميد أو إعادة تفعيل حساب المريض مع تسجيل الحدث في سجل المراقبة | `accountStatus` (`active` \| `suspended`), `reason` |
+| `GET` | `/api/staff/patients/analytics` | إحصائيات شاملة: إجمالي المرضى، المسجلين اليوم/الأسبوع/الشهر، معدل التحويل، أعلى المرضى حجزاً، **والأكثر إلغاءً للحجوزات**، ومنحنى النمو | لا يتطلب معلمات |
+| `GET` | `/api/staff/patients/most-cancelled` | **جديد:** جلب قائمة المرضى الأكثر إلغاءً للحجوزات مع معدل الإلغاء وحالة الحساب لدراسة تجميدها | `limit`, `minCancellations`, `accountStatus`, `search` |
+| `PATCH` | `/api/staff/patients/:id/status` | تجميد أو إعادة تفعيل حساب المريض لمنعه من حجز مواعيد جديدة أو تسجيل الدخول | `accountStatus` (`active` \| `suspended`), `reason` |
 
 ---
 
@@ -84,6 +87,7 @@
       "stats": {
         "totalBookings": 4,
         "completedBookings": 3,
+        "cancelledBookings": 1,
         "totalSpent": 1250,
         "lastBookingDate": "2026-09-20T14:00:00.000Z"
       }
@@ -100,6 +104,7 @@
       "stats": {
         "totalBookings": 0,
         "completedBookings": 0,
+        "cancelledBookings": 0,
         "totalSpent": 0,
         "lastBookingDate": null
       }
@@ -279,6 +284,22 @@
         "completedBookings": 11,
         "totalSpent": 4800
       }
+    ],
+    "topCancelledPatients": [
+      {
+        "_id": "64a1b2c3d4e5f67890123477",
+        "name": "محمود إبراهيم",
+        "phoneNumber": "01022334455",
+        "email": "mahmoud@example.com",
+        "address": "الفيوم - إطسا",
+        "accountStatus": "active",
+        "profileImage": null,
+        "createdAt": "2026-07-10T11:00:00.000Z",
+        "cancelledCount": 6,
+        "doctorCancelledCount": 4,
+        "nursingCancelledCount": 2,
+        "lastCancelledAt": "2026-09-24T18:30:00.000Z"
+      }
     ]
   }
 }
@@ -286,9 +307,80 @@
 
 ---
 
-### 2.4 تفعيل أو إيقاف حساب المريض (`PATCH /api/staff/patients/:id/status`)
+### 2.4 عرض حسابات المرضى الأكثر إلغاءً للحجوزات (`GET /api/staff/patients/most-cancelled`)
 
-يستخدمه الستاف أو الأدمن لتجميد حساب المريض أو إعادة تفعيله.
+مسار مخصص لمراقبة سلوكيات الإلغاء المتكررة والحسابات المشبوهة؛ حيث يتيح للـ Staff فحص المرضى الذين لديهم أعلى عدد إلغاءات ومعدل إلغاء مرتفع مقارنة بإجمالي طلباتهم، مما يمكن الإدارة من اتخاذ قرار فوري بتجميد الحساب (`Suspend`).
+
+* **Headers:**
+  ```http
+  Authorization: Bearer <accessToken>
+  Content-Type: application/json
+  ```
+
+* **Query Parameters:**
+  * `limit` *(number, optional)*: الحد الأقصى لعدد النتائج (الافتراضي: `20`، الأقصى: `100`).
+  * `minCancellations` *(number, optional)*: الحد الأدنى لعدد مرات الإلغاء لإظهار المريض (الافتراضي: `1`).
+  * `accountStatus` *(string, optional)*: تصفية بحالة الحساب (`all`, `active`, `suspended`). يفيد في حصر الحسابات النشطة فقط التي تستوجب التجميد.
+  * `search` أو `query` *(string, optional)*: بحث بالاسم أو الهاتف أو البريد.
+
+#### 📤 نموذج الاستجابة الناجحة (200 OK):
+```json
+{
+  "success": true,
+  "count": 2,
+  "data": [
+    {
+      "_id": "64a1b2c3d4e5f67890123477",
+      "name": "محمود إبراهيم",
+      "phoneNumber": "01022334455",
+      "email": "mahmoud@example.com",
+      "address": "الفيوم - إطسا",
+      "accountStatus": "active",
+      "profileImage": null,
+      "createdAt": "2026-07-10T11:00:00.000Z",
+      "stats": {
+        "cancelledBookings": 6,
+        "doctorCancelledBookings": 4,
+        "nursingCancelledBookings": 2,
+        "totalBookings": 8,
+        "completedBookings": 2,
+        "cancellationRate": 75.0,
+        "lastCancelledAt": "2026-09-24T18:30:00.000Z"
+      }
+    },
+    {
+      "_id": "64a1b2c3d4e5f67890123488",
+      "name": "سيد عبد الله",
+      "phoneNumber": "01155667788",
+      "email": "sayed@example.com",
+      "address": "الفيوم - طامية",
+      "accountStatus": "suspended",
+      "profileImage": null,
+      "createdAt": "2026-06-01T09:00:00.000Z",
+      "stats": {
+        "cancelledBookings": 5,
+        "doctorCancelledBookings": 5,
+        "nursingCancelledBookings": 0,
+        "totalBookings": 5,
+        "completedBookings": 0,
+        "cancellationRate": 100.0,
+        "lastCancelledAt": "2026-09-22T14:15:00.000Z"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 2.5 تفعيل أو تجميد وإيقاف حساب المريض (`PATCH /api/staff/patients/:id/status`)
+
+يستخدمه الستاف أو الأدمن لتجميد حساب المريض عند رصد إساءة استخدام أو إلغاءات متكررة، أو إعادة تفعيله لاحقاً.
+
+> **💡 الآثار المترتبة على التجميد (Suspended):**
+> 1. يتم منع المستخدم فوراً من تسجيل الدخول ويُرفض بـ `403 Forbidden`.
+> 2. يتم منع إنشاء أي طلبات حجز جديدة سواء كشف طبيب أو خدمة تمريض منزلي.
+> 3. يتم تسجيل اسم المسؤول وسبب الإيقاف في سجل المراقبة الإداري (`Audit Logs`).
 
 * **Headers:**
   ```http
@@ -423,6 +515,27 @@
 #### 3. جداول إضافية بالصفحة (Quick Lists)
 - **قائمة أحدث المسجلين (Recently Registered Patients):** جدول مصغر بآخر 8 مرضى سجلوا للتواصل الترحيبي معهم.
 - **أعلى المرضى نشاطاً وحجزاً (Top Booking Patients Leaderboard):** قائمة بأكثر المرضى ولاءً وحجزاً مع عدد حجوزاتهم وإجمالي ما أنفقوه.
+- **جدول المرضى الأكثر إلغاءً (Top Cancelled Patients List):** كارت تحذيري يعرض المرضى ذوي أعلى إلغاءات مع زر فوري "تجميد الحساب".
+
+---
+
+### الشاشة الرابعة: مراقبة الحسابات الأكثر إلغاءً وتجميدها (`/dashboard/patients/cancellations`)
+
+شاشة إدارية مخصصة لمكافحة الإلغاءات العشوائية وحماية أوقات الأطباء والتمريض:
+- **فلاتر متقدمة:**
+  - تصفية الحسابات النشطة فقط (`accountStatus=active`) للتركيز على من لم يتم تجميده بعد.
+  - تحديد الحد الأدنى للإلغاءات (`minCancellations`) مثلاً 3 أو أكثر.
+- **جدول الرصد والمتابعة:**
+  - اسم المريض ورقم هاتفه مع صورة الحساب.
+  - إجمالي الإلغاءات مع تفصيل (إلغاء أطباء / إلغاء تمريض).
+  - معدل الإلغاء (`cancellationRate`) بالنسبة المئوية بلون تحذيري (أحمر لو تجاوز 50%).
+  - تاريخ وتوقيت آخر إلغاء قام به.
+  - شارة الحالة (`نشط Active` أو `موقوف Suspended`).
+- **زر الإجراء السريع (Quick Freeze Button):**
+  - زر بلون أحمر بارز "تجميد الحساب (Freeze)".
+  - عند الضغط عليه، يظهر Dialog تأكيد لإدخال سبب الإيقاف (مثل: "إلغاءات متكررة غير مبررة").
+  - يتم استدعاء `PATCH /api/staff/patients/:id/status` مع `{ "accountStatus": "suspended", "reason": "..." }`.
+  - بمجرد التجميد، يُمنع المريض فوراً من تسجيل الدخول ومن إجراء أي حجوزات جديدة، وتتحول الشارة إلى موقوف بلون رمادي/أحمر مع خيار "إعادة التفعيل (Unfreeze)".
 
 ---
 
@@ -445,8 +558,46 @@ export interface GeoLocation {
 export interface PatientStats {
   totalBookings: number;
   completedBookings: number;
+  cancelledBookings: number;
   totalSpent: number;
   lastBookingDate: string | null;
+}
+
+export interface MostCancelledPatientStats {
+  cancelledBookings: number;
+  doctorCancelledBookings: number;
+  nursingCancelledBookings: number;
+  totalBookings: number;
+  completedBookings: number;
+  cancellationRate: number;
+  lastCancelledAt: string | null;
+}
+
+export interface MostCancelledPatient {
+  _id: string;
+  name: string;
+  phoneNumber: string;
+  email: string;
+  address: string;
+  accountStatus: AccountStatus;
+  profileImage: string | null;
+  createdAt: string;
+  stats: MostCancelledPatientStats;
+}
+
+export interface TopCancelledPatientItem {
+  _id: string;
+  name: string;
+  phoneNumber: string;
+  email: string;
+  address: string;
+  accountStatus: AccountStatus;
+  profileImage: string | null;
+  createdAt: string;
+  cancelledCount: number;
+  doctorCancelledCount: number;
+  nursingCancelledCount: number;
+  lastCancelledAt: string | null;
 }
 
 export interface Patient {
@@ -566,6 +717,7 @@ export interface PatientAnalyticsResponse {
       monthlyLast6Months: MonthlyTrendItem[];
     };
     topPatients: TopPatientItem[];
+    topCancelledPatients: TopCancelledPatientItem[];
   };
 }
 ```
@@ -582,6 +734,7 @@ import {
   PatientsListResponse,
   PatientDetailsResponse,
   PatientAnalyticsResponse,
+  MostCancelledPatient,
   AccountStatus,
 } from '@/types/patient';
 
@@ -669,7 +822,35 @@ export async function getPatientsAnalytics(): Promise<PatientAnalyticsResponse> 
 }
 
 /**
- * 4. تفعيل أو تجميد حساب مريض
+ * 4. استرجاع قائمة الحسابات الأكثر إلغاءً للحجوزات
+ */
+export async function getMostCancelledPatients(params?: {
+  limit?: number;
+  minCancellations?: number;
+  accountStatus?: 'all' | 'active' | 'suspended';
+  search?: string;
+}): Promise<{ success: boolean; count: number; data: MostCancelledPatient[] }> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.append('limit', params.limit.toString());
+  if (params?.minCancellations) query.append('minCancellations', params.minCancellations.toString());
+  if (params?.accountStatus && params.accountStatus !== 'all') query.append('accountStatus', params.accountStatus);
+  if (params?.search) query.append('search', params.search);
+
+  const res = await fetch(`${API_BASE_URL}/staff/patients/most-cancelled?${query.toString()}`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || 'فشل جلب الحسابات الأكثر إلغاءً');
+  }
+
+  return res.json();
+}
+
+/**
+ * 5. تفعيل أو تجميد حساب مريض
  */
 export async function updatePatientAccountStatus(
   patientId: string,

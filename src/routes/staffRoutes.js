@@ -42,6 +42,7 @@ router.get('/users/search', authMW, checkRoleMW('STAFF', 'ADMIN'), staffControll
 
 // مسارات إدارة وتحليلات وسجل حجوزات المرضى
 router.get('/patients/analytics', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getPatientsAnalytics);
+router.get('/patients/most-cancelled', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getMostCancelledPatients);
 router.get('/patients', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.listPatients);
 router.get('/patients/:id/summary', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getPatientDetailsAndSummary);
 router.get('/patients/:id', authMW, checkRoleMW('STAFF', 'ADMIN'), staffController.getPatientDetailsAndSummary);
