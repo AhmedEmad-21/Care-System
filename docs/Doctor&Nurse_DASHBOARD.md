@@ -311,3 +311,16 @@ Authorization: Bearer <YOUR_TOKEN>
   }
 }
 ```
+
+---
+
+### 9. تحديث بيانات البروفايل بالكامل (Profile Update)
+
+يسمح للطبيب أو الممرض بتحديث بياناته الشخصية والمهنية مباشرة.
+
+* **Endpoint:** `PATCH /api/provider-dashboard/profile`
+* **ملاحظة:** متاح أيضاً عبر المسارات المباشرة:
+  - للأطباء: `PATCH /api/doctors/profile` (أو `PATCH /api/doctors/:id` للمعرف الخاص به أو للاستاف)
+  - للممرضين: `PATCH /api/nurses/profile` (أو `PATCH /api/nurses/:id` للمعرف الخاص به أو للاستاف)
+* **الصلاحيات:** متاح للأدوار (`Doctor`, `Nurse`, `Staff`, `Admin`). الطبيب والممرض يمكنهما تعديل حسابهما فقط، بينما الاستاف والأدمن يمكنهم تعديل أي مزود.
+* **دليل التوثيق المفصل والشامل:** راجع ملف [PROVIDER_PROFILE_UPDATE_FRONTEND_GUIDE.md](file:///e:/Care%20System/docs/PROVIDER_PROFILE_UPDATE_FRONTEND_GUIDE.md).

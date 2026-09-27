@@ -1,5 +1,9 @@
+const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const Doctor = require('../models/doctorModel');
+const User = require('../models/userModel');
+const { normalizeGeoPoint } = require('../utils/geoPoint');
+const { logAuditEvent } = require('../services/auditLogService');
 const {
   buildNameFilter,
   findByNameWithOptionalGeo,
@@ -52,11 +56,34 @@ const listDoctors = asyncHandler(async (req, res) => {
 });
 
 const getDoctorById = asyncHandler(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'معرف الطبيب غير صالح' });
+  }
   const doctor = await Doctor.findById(req.params.id).select('-userId').lean();
   if (!doctor) {
     return res.status(404).json({ success: false, message: 'Doctor not found' });
   }
   return res.json({ success: true, data: formatDoctorPrice(doctor) });
+});
+
+// جلب الملف الشخصي للطبيب المسجل حالياً
+const getDoctorProfile = asyncHandler(async (req, res) => {
+  const currentUserId = req.user.id || req.user._id;
+  let doctor = await Doctor.findOne({ userId: currentUserId }).lean();
+  if (!doctor && req.user.phoneNumber) {
+    doctor = await Doctor.findOne({ phoneNumber: req.user.phoneNumber }).lean();
+  }
+  if (!doctor) {
+    return res.status(404).json({ success: false, message: 'لم يتم العثور على ملف طبيب مرتبط بهذا الحساب' });
+  }
+
+  const user = await User.findById(doctor.userId || currentUserId).select('email').lean();
+  const formatted = formatDoctorPrice(doctor);
+  if (user?.email) {
+    formatted.email = user.email;
+  }
+
+  return res.json({ success: true, data: formatted });
 });
 
 const listAvailableDoctors = asyncHandler(async (req, res) => {
@@ -241,13 +268,154 @@ const updateDoctorDescriptionById = asyncHandler(async (req, res) => {
   });
 });
 
+// تحديث الملف الشخصي وبيانات الطبيب (متاح للطبيب نفسه وللاستاف والأدمن)
+const updateDoctorProfile = asyncHandler(async (req, res) => {
+  const currentUserId = req.user.id || req.user._id;
+  const currentUserRole = String(req.user.role || '').toUpperCase();
+  const paramId = req.params.id;
+
+  let doctor = null;
+
+  // 1. تحديد الطبيب المراد تعديله والتحقق من الصلاحيات
+  if (!paramId || paramId === 'profile') {
+    doctor = await Doctor.findOne({ userId: currentUserId });
+    if (!doctor && req.user.phoneNumber) {
+      doctor = await Doctor.findOne({ phoneNumber: req.user.phoneNumber });
+      if (doctor && !doctor.userId) {
+        doctor.userId = currentUserId;
+      }
+    }
+  } else {
+    if (!mongoose.Types.ObjectId.isValid(paramId)) {
+      return res.status(400).json({ success: false, message: 'معرف الطبيب غير صالح' });
+    }
+
+    doctor = await Doctor.findById(paramId);
+    if (!doctor) {
+      doctor = await Doctor.findOne({ userId: paramId });
+    }
+
+    if (!doctor) {
+      return res.status(404).json({ success: false, message: 'الطبيب غير موجود' });
+    }
+
+    // إذا كان المستخدم الحالي Doctor، يتأكد أنه يعدل ملفه الشخصي فقط
+    if (currentUserRole === 'DOCTOR') {
+      const isOwner =
+        (doctor.userId && doctor.userId.toString() === currentUserId.toString()) ||
+        doctor._id.toString() === currentUserId.toString() ||
+        (doctor.phoneNumber && req.user.phoneNumber && doctor.phoneNumber === req.user.phoneNumber);
+
+      if (!isOwner) {
+        return res.status(403).json({
+          success: false,
+          message: 'غير مصرح لك بتعديل بيانات طبيب آخر',
+        });
+      }
+    }
+  }
+
+  if (!doctor) {
+    return res.status(404).json({
+      success: false,
+      message: 'لم يتم العثور على ملف طبيب مرتبط بهذا الحساب',
+    });
+  }
+
+  // 2. تجهيز التعديلات
+  const updates = { ...req.body };
+
+  // حماية: الطبيب لا يمكنه تعديل نسبة العمولة أو التقييمات
+  if (currentUserRole === 'DOCTOR') {
+    delete updates.commissionRate;
+    delete updates.rating;
+    delete updates.totalReviews;
+  }
+
+  if (updates.location) {
+    updates.location = normalizeGeoPoint(updates.location, 'location');
+  }
+
+  // 3. التحقق من عدم تكرار البريد أو الهاتف
+  if (updates.email) {
+    const emailNorm = updates.email.toLowerCase().trim();
+    const query = doctor.userId ? { email: emailNorm, _id: { $ne: doctor.userId } } : { email: emailNorm };
+    const existingUser = await User.findOne(query);
+    if (existingUser) {
+      return res.status(409).json({ success: false, message: 'البريد الإلكتروني مستخدم بالفعل لحساب آخر' });
+    }
+  }
+
+  if (updates.phoneNumber && updates.phoneNumber !== doctor.phoneNumber) {
+    const existingDoc = await Doctor.findOne({
+      phoneNumber: updates.phoneNumber,
+      _id: { $ne: doctor._id },
+    });
+    if (existingDoc) {
+      return res.status(409).json({ success: false, message: 'رقم الهاتف مسجل بالفعل لطبيب آخر' });
+    }
+    const userQuery = doctor.userId ? { phoneNumber: updates.phoneNumber, _id: { $ne: doctor.userId } } : { phoneNumber: updates.phoneNumber };
+    const existingUser = await User.findOne(userQuery);
+    if (existingUser) {
+      return res.status(409).json({ success: false, message: 'رقم الهاتف مسجل بالفعل لحساب آخر' });
+    }
+  }
+
+  // 4. تطبيق التعديلات
+  Object.assign(doctor, updates);
+  await doctor.save();
+
+  // 5. مزامنة بيانات المستخدم المرتبط
+  if (doctor.userId) {
+    const userUpdates = {};
+    if (updates.name) userUpdates.name = updates.name;
+    if (updates.email) userUpdates.email = updates.email.toLowerCase().trim();
+    if (updates.phoneNumber) userUpdates.phoneNumber = updates.phoneNumber;
+    if (updates.address) userUpdates.address = updates.address;
+    if (updates.profileImage) userUpdates.profileImage = updates.profileImage;
+    if (updates.location) userUpdates.location = updates.location;
+
+    if (Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(doctor.userId, userUpdates).catch(() => {});
+    }
+  }
+
+  // 6. تسجيل الحدث
+  if (currentUserRole === 'STAFF' || currentUserRole === 'ADMIN') {
+    await logAuditEvent({
+      actorId: currentUserId,
+      actorRole: req.user.role,
+      action: 'UPDATE_DOCTOR',
+      entityId: doctor._id,
+      entityType: 'Doctor',
+      meta: { updates },
+    });
+  }
+
+  const responseData = formatDoctorPrice(doctor.toObject ? doctor.toObject() : doctor);
+  if (updates.email) {
+    responseData.email = updates.email.toLowerCase().trim();
+  } else if (doctor.userId) {
+    const linkedUser = await User.findById(doctor.userId).select('email').lean();
+    if (linkedUser?.email) responseData.email = linkedUser.email;
+  }
+
+  return res.json({
+    success: true,
+    message: 'تم تحديث بيانات الطبيب بنجاح',
+    data: responseData,
+  });
+});
+
 module.exports = { 
   listDoctors, 
   getDoctorById, 
+  getDoctorProfile,
   listAvailableDoctors, 
   getSpecializations, 
   searchDoctorsByName,
   filterDoctors,
   updateMyDoctorDescription,
-  updateDoctorDescriptionById
+  updateDoctorDescriptionById,
+  updateDoctorProfile
 };

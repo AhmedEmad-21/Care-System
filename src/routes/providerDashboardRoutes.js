@@ -33,5 +33,6 @@ router.patch('/description', controller.updateDescription);
 
 // جلب بيانات بروفايل المزود في الداش بورد
 router.get('/profile', controller.getProfile);
+router.patch('/profile', controller.updateProfile);
 
 module.exports = router;

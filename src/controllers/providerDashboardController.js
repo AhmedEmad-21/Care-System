@@ -1,4 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
+const doctorController = require('./doctorController');
+const nurseController = require('./nurseController');
 const {
   getProviderBookings,
   scheduleBooking,
@@ -164,6 +166,24 @@ const getProfile = asyncHandler(async (req, res) => {
   });
 });
 
+// تحديث الملف الشخصي لمزود الخدمة (طبيب / ممرض)
+const updateProfile = asyncHandler(async (req, res, next) => {
+  const role = String(req.user.role || '').toUpperCase();
+  req.params.id = 'profile';
+
+  if (role === 'DOCTOR') {
+    return doctorController.updateDoctorProfile(req, res, next);
+  }
+  if (role === 'NURSE') {
+    return nurseController.updateNurseProfile(req, res, next);
+  }
+
+  return res.status(403).json({
+    success: false,
+    message: 'نوع الحساب غير مدعوم لهذه العملية'
+  });
+});
+
 module.exports = {
   listBookings,
   setBookingSchedule,
@@ -173,5 +193,6 @@ module.exports = {
   getTodayAvailability,
   updateTodayAvailability,
   updateDescription,
-  getProfile
+  getProfile,
+  updateProfile
 };

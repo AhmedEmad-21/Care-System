@@ -1,5 +1,9 @@
+const mongoose = require('mongoose');
 const asyncHandler = require('../utils/asyncHandler');
 const Nurse = require('../models/nurseModel');
+const User = require('../models/userModel');
+const { normalizeGeoPoint } = require('../utils/geoPoint');
+const { logAuditEvent } = require('../services/auditLogService');
 const {
   buildNameFilter,
   findByNameWithOptionalGeo,
@@ -45,9 +49,32 @@ const listNurses = asyncHandler(async (req, res) => {
 
 // 2. عرض تفاصيل ممرض واحد
 const getNurseById = asyncHandler(async (req, res) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ success: false, message: 'معرف الممرض غير صالح' });
+  }
   const nurse = await Nurse.findById(req.params.id).select('-userId').lean();
   if (!nurse) return res.status(404).json({ success: false, message: 'Nurse not found' });
   return res.json({ success: true, data: formatNurse(nurse) });
+});
+
+// جلب الملف الشخصي للممرض المسجل حالياً
+const getNurseProfile = asyncHandler(async (req, res) => {
+  const currentUserId = req.user.id || req.user._id;
+  let nurse = await Nurse.findOne({ userId: currentUserId }).lean();
+  if (!nurse && req.user.phoneNumber) {
+    nurse = await Nurse.findOne({ phoneNumber: req.user.phoneNumber }).lean();
+  }
+  if (!nurse) {
+    return res.status(404).json({ success: false, message: 'لم يتم العثور على ملف ممرض مرتبط بهذا الحساب' });
+  }
+
+  const user = await User.findById(nurse.userId || currentUserId).select('email').lean();
+  const formatted = formatNurse(nurse);
+  if (user?.email) {
+    formatted.email = user.email;
+  }
+
+  return res.json({ success: true, data: formatted });
 });
 
 // 3. البحث عن ممرضين حسب الموقع والخدمة
@@ -250,12 +277,153 @@ const updateNurseDescriptionById = asyncHandler(async (req, res) => {
   });
 });
 
+// تحديث الملف الشخصي وبيانات الممرض (متاح للممرض نفسه وللاستاف والأدمن)
+const updateNurseProfile = asyncHandler(async (req, res) => {
+  const currentUserId = req.user.id || req.user._id;
+  const currentUserRole = String(req.user.role || '').toUpperCase();
+  const paramId = req.params.id;
+
+  let nurse = null;
+
+  // 1. تحديد الممرض المراد تعديله والتحقق من الصلاحيات
+  if (!paramId || paramId === 'profile') {
+    nurse = await Nurse.findOne({ userId: currentUserId });
+    if (!nurse && req.user.phoneNumber) {
+      nurse = await Nurse.findOne({ phoneNumber: req.user.phoneNumber });
+      if (nurse && !nurse.userId) {
+        nurse.userId = currentUserId;
+      }
+    }
+  } else {
+    if (!mongoose.Types.ObjectId.isValid(paramId)) {
+      return res.status(400).json({ success: false, message: 'معرف الممرض غير صالح' });
+    }
+
+    nurse = await Nurse.findById(paramId);
+    if (!nurse) {
+      nurse = await Nurse.findOne({ userId: paramId });
+    }
+
+    if (!nurse) {
+      return res.status(404).json({ success: false, message: 'الممرض غير موجود' });
+    }
+
+    // إذا كان المستخدم الحالي Nurse، يتأكد أنه يعدل ملفه الشخصي فقط
+    if (currentUserRole === 'NURSE') {
+      const isOwner =
+        (nurse.userId && nurse.userId.toString() === currentUserId.toString()) ||
+        nurse._id.toString() === currentUserId.toString() ||
+        (nurse.phoneNumber && req.user.phoneNumber && nurse.phoneNumber === req.user.phoneNumber);
+
+      if (!isOwner) {
+        return res.status(403).json({
+          success: false,
+          message: 'غير مصرح لك بتعديل بيانات ممرض آخر',
+        });
+      }
+    }
+  }
+
+  if (!nurse) {
+    return res.status(404).json({
+      success: false,
+      message: 'لم يتم العثور على ملف ممرض مرتبط بهذا الحساب',
+    });
+  }
+
+  // 2. تجهيز التعديلات
+  const updates = { ...req.body };
+
+  // حماية: الممرض لا يمكنه تعديل نسبة العمولة أو التقييمات
+  if (currentUserRole === 'NURSE') {
+    delete updates.commissionRate;
+    delete updates.rating;
+    delete updates.totalReviews;
+  }
+
+  if (updates.location) {
+    updates.location = normalizeGeoPoint(updates.location, 'location');
+  }
+
+  // 3. التحقق من عدم تكرار البريد أو الهاتف
+  if (updates.email) {
+    const emailNorm = updates.email.toLowerCase().trim();
+    const query = nurse.userId ? { email: emailNorm, _id: { $ne: nurse.userId } } : { email: emailNorm };
+    const existingUser = await User.findOne(query);
+    if (existingUser) {
+      return res.status(409).json({ success: false, message: 'البريد الإلكتروني مستخدم بالفعل لحساب آخر' });
+    }
+  }
+
+  if (updates.phoneNumber && updates.phoneNumber !== nurse.phoneNumber) {
+    const existingNurse = await Nurse.findOne({
+      phoneNumber: updates.phoneNumber,
+      _id: { $ne: nurse._id },
+    });
+    if (existingNurse) {
+      return res.status(409).json({ success: false, message: 'رقم الهاتف مسجل بالفعل لممرض آخر' });
+    }
+    const userQuery = nurse.userId ? { phoneNumber: updates.phoneNumber, _id: { $ne: nurse.userId } } : { phoneNumber: updates.phoneNumber };
+    const existingUser = await User.findOne(userQuery);
+    if (existingUser) {
+      return res.status(409).json({ success: false, message: 'رقم الهاتف مسجل بالفعل لحساب آخر' });
+    }
+  }
+
+  // 4. تطبيق التعديلات
+  Object.assign(nurse, updates);
+  await nurse.save();
+
+  // 5. مزامنة بيانات المستخدم المرتبط
+  if (nurse.userId) {
+    const userUpdates = {};
+    if (updates.name) userUpdates.name = updates.name;
+    if (updates.email) userUpdates.email = updates.email.toLowerCase().trim();
+    if (updates.phoneNumber) userUpdates.phoneNumber = updates.phoneNumber;
+    if (updates.address) userUpdates.address = updates.address;
+    if (updates.profileImage) userUpdates.profileImage = updates.profileImage;
+    if (updates.location) userUpdates.location = updates.location;
+
+    if (Object.keys(userUpdates).length > 0) {
+      await User.findByIdAndUpdate(nurse.userId, userUpdates).catch(() => {});
+    }
+  }
+
+  // 6. تسجيل الحدث
+  if (currentUserRole === 'STAFF' || currentUserRole === 'ADMIN') {
+    await logAuditEvent({
+      actorId: currentUserId,
+      actorRole: req.user.role,
+      action: 'UPDATE_NURSE',
+      entityId: nurse._id,
+      entityType: 'Nurse',
+      meta: { updates },
+    });
+  }
+
+  const responseData = formatNurse(nurse.toObject ? nurse.toObject() : nurse);
+  if (updates.email) {
+    responseData.email = updates.email.toLowerCase().trim();
+  } else if (nurse.userId) {
+    const linkedUser = await User.findById(nurse.userId).select('email').lean();
+    if (linkedUser?.email) responseData.email = linkedUser.email;
+  }
+
+  return res.json({
+    success: true,
+    message: 'تم تحديث بيانات الممرض بنجاح',
+    data: responseData,
+  });
+});
+
 module.exports = {
   listNurses,
   getNurseById,
+  getNurseProfile,
   listNursesByService,
   searchNursesByName,
   filterNurses,
   updateMyNurseDescription,
-  updateNurseDescriptionById
+  updateNurseDescriptionById,
+  updateNurseProfile
 };
