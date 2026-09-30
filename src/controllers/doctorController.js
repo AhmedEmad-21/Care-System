@@ -87,9 +87,9 @@ const getDoctorProfile = asyncHandler(async (req, res) => {
 });
 
 const listAvailableDoctors = asyncHandler(async (req, res) => {
-  const { specialty, lat, long, date } = req.query; 
+  const { specialty, lat, long, date } = req.query;
   const userCoordinates = [parseFloat(long), parseFloat(lat)]; // [longitude, latitude]
-  
+
   const targetDate = date ? new Date(date) : new Date();
   const targetDay = targetDate.getDay();
   const targetDateStr = getTodayDateString(targetDate);
@@ -101,8 +101,8 @@ const listAvailableDoctors = asyncHandler(async (req, res) => {
         distanceField: "dist.calculated",
         spherical: true,
         maxDistance: 35000, // <--- تم تحديد نطاق البحث بـ 35 كم ليناسب محافظة الفيوم
-        query: { 
-          specialization: specialty, 
+        query: {
+          specialization: specialty,
           isAvailable: true,
           offDays: { $ne: targetDay },
           unavailableDates: { $ne: targetDateStr }
@@ -111,9 +111,9 @@ const listAvailableDoctors = asyncHandler(async (req, res) => {
     }
   ]);
 
-  return res.json({ 
-    success: true, 
-    count: doctors.length, 
+  return res.json({
+    success: true,
+    count: doctors.length,
     data: doctors.map(formatDoctorPrice)
   });
 });
@@ -121,7 +121,7 @@ const listAvailableDoctors = asyncHandler(async (req, res) => {
 const getSpecializations = asyncHandler(async (req, res) => {
   // تجميع التخصصات للأطباء المتاحين فقط لتجنب إظهار تخصصات لدكاترة غير مفعلين
   const specializations = await Doctor.distinct('specialization', { isAvailable: true });
-  
+
   return res.json({
     success: true,
     count: specializations.length,
@@ -166,7 +166,7 @@ const filterDoctors = asyncHandler(async (req, res) => {
   const targetDate = date ? new Date(date) : new Date();
   const targetDay = targetDate.getDay();
   const targetDateStr = getTodayDateString(targetDate);
-  
+
   let query = {
     isAvailable: true,
     offDays: { $ne: targetDay },
@@ -179,7 +179,7 @@ const filterDoctors = asyncHandler(async (req, res) => {
 
   if (lat && long) {
     const userCoordinates = [parseFloat(long), parseFloat(lat)];
-    
+
     if (isNaN(userCoordinates[0]) || isNaN(userCoordinates[1])) {
       return res.status(400).json({
         success: false,
@@ -336,6 +336,28 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
     updates.location = normalizeGeoPoint(updates.location, 'location');
   }
 
+  // معالجة وتأكيد أسعار الكشف (basePrice و urgentPrice مع دعم price كـ alias)
+  if (updates.price !== undefined && updates.basePrice === undefined) {
+    updates.basePrice = updates.price;
+  }
+  delete updates.price;
+
+  if (updates.basePrice !== undefined) {
+    const parsedBase = Number(updates.basePrice);
+    if (isNaN(parsedBase) || parsedBase < 0) {
+      return res.status(400).json({ success: false, message: 'سعر الكشف الأساسي (basePrice) يجب أن يكون رقماً موجباً' });
+    }
+    updates.basePrice = parsedBase;
+  }
+
+  if (updates.urgentPrice !== undefined) {
+    const parsedUrgent = Number(updates.urgentPrice);
+    if (isNaN(parsedUrgent) || parsedUrgent < 0) {
+      return res.status(400).json({ success: false, message: 'سعر الكشف المستعجل (urgentPrice) يجب أن يكون رقماً موجباً' });
+    }
+    updates.urgentPrice = parsedUrgent;
+  }
+
   // 3. التحقق من عدم تكرار البريد أو الهاتف
   if (updates.email) {
     const emailNorm = updates.email.toLowerCase().trim();
@@ -376,7 +398,7 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
     if (updates.location) userUpdates.location = updates.location;
 
     if (Object.keys(userUpdates).length > 0) {
-      await User.findByIdAndUpdate(doctor.userId, userUpdates).catch(() => {});
+      await User.findByIdAndUpdate(doctor.userId, userUpdates).catch(() => { });
     }
   }
 
@@ -407,12 +429,12 @@ const updateDoctorProfile = asyncHandler(async (req, res) => {
   });
 });
 
-module.exports = { 
-  listDoctors, 
-  getDoctorById, 
+module.exports = {
+  listDoctors,
+  getDoctorById,
   getDoctorProfile,
-  listAvailableDoctors, 
-  getSpecializations, 
+  listAvailableDoctors,
+  getSpecializations,
   searchDoctorsByName,
   filterDoctors,
   updateMyDoctorDescription,

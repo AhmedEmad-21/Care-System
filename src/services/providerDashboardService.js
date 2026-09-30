@@ -498,7 +498,7 @@ const getProviderProfileService = async ({ userId }) => {
   const isDateBlocked = unavailableDates.includes(todayStr);
   const isAvailableToday = Boolean(providerDoc.isAvailable) && !isDateBlocked && !isDayOff;
 
-  return {
+  const response = {
     ...providerDoc,
     description: providerDoc.description || '',
     type,
@@ -506,6 +506,18 @@ const getProviderProfileService = async ({ userId }) => {
     isDateBlocked,
     isDayOff
   };
+
+  if (type === 'doctor') {
+    const basePrice = providerDoc.basePrice != null ? Number(providerDoc.basePrice) : 0;
+    const urgentPrice = (providerDoc.urgentPrice != null && Number(providerDoc.urgentPrice) > 0)
+      ? Number(providerDoc.urgentPrice)
+      : basePrice;
+    response.basePrice = basePrice;
+    response.urgentPrice = urgentPrice;
+    response.price = basePrice;
+  }
+
+  return response;
 };
 
 module.exports = {

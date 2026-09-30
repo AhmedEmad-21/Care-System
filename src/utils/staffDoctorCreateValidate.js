@@ -8,7 +8,7 @@ module.exports = {
     password: {
       type: 'string',
       minLength: 8,
-      pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{8,}$",
+      pattern: "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&#._-])[A-Za-z\\d@$!%*?&#._-]{8,}$",
     },
     phoneNumber: { type: 'string', pattern: "^01[0125][0-9]{8}$" },
     secondaryPhoneNumber: { type: 'string', pattern: "^01[0125][0-9]{8}$" },

@@ -833,7 +833,7 @@ const createNurse = asyncHandler(async (req, res) => {
 // إنشاء حساب Staff أو Admin جديد (مُحدث لاستقبال رقم الهاتف)
 const createStaffOrAdmin = asyncHandler(async (req, res) => {
   try {
-    const { name, email, password, role, phoneNumber } = req.body;
+    const { name, email, password, role, phoneNumber, address } = req.body;
 
     const user = await User.create({
       role,
@@ -841,7 +841,7 @@ const createStaffOrAdmin = asyncHandler(async (req, res) => {
       email,
       passwordHash: password,
       phoneNumber, // تم استبدال القيمة الثابتة بالرقم القادم من الطلب
-      address: 'الإدارة',
+      address: address || 'الإدارة',
       accountStatus: 'active',
       vettingStatus: 'approved',
       createdByAdminID: req.user.id || req.user._id
